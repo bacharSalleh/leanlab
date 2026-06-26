@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- One-command release script (`scripts/release.py`) and a `ruff check` lint job in CI.
+
+### Changed
+- README is now user-facing (PyPI install + quick start for both lab types). The
+  project concept, structure, two-lab mapping, and coding-lab flow moved to
+  `docs/OVERVIEW.md`.
+
 ## [0.2.1] - 2026-06-26
 
 ### Fixed
