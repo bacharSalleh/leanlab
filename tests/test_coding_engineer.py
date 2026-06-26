@@ -257,7 +257,7 @@ def test_panel_approves_only_when_all_approve():
 def test_lenses_distinct_then_general():
     from leanlab.core.coding.engineer import _lenses_for
     assert _lenses_for(1) == [None]                         # single = general reviewer
-    names = [l["name"] for l in _lenses_for(3)]
+    names = [lens["name"] for lens in _lenses_for(3)]
     assert names == ["correctness", "spec-conformance", "security"]
 
 
