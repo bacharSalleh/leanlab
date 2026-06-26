@@ -2,24 +2,34 @@
   "version": "1.0",
   "useCase": "run-experiments",
   "slice": "fix-on-error",
-  "recordedAt": "2026-06-26T18:33:03.378334+00:00",
+  "recordedAt": "2026-06-26T18:42:23.215204+00:00",
+  "seqFile": ".archik/run-experiments-fix.archik.seq.yaml",
   "steps": [
     {
+      "id": "m1",
       "from": "loop",
       "to": "evaluator",
-      "label": "run evaluator",
+      "label": "score(experiment_file)",
       "status": "error",
       "data": {
         "in": {
-          "experiment": "experiments/idea_01.py"
+          "experiment_file": "experiments/idea_01.py"
         },
         "out": "ValueError: NaN in predictions"
       }
     },
     {
+      "id": "m2",
+      "from": "evaluator",
+      "to": "loop",
+      "label": "ERROR \u2014 no metrics",
+      "status": "error"
+    },
+    {
+      "id": "m3",
       "from": "loop",
-      "to": "claude",
-      "label": "resume the Worker session to fix the error",
+      "to": "port",
+      "label": "run(fixPrompt, schema, resume)",
       "data": {
         "in": {
           "error": "ValueError: NaN in predictions"
@@ -27,9 +37,16 @@
       }
     },
     {
+      "id": "m8",
       "from": "loop",
       "to": "evaluator",
-      "label": "re-run evaluator",
+      "label": "score(experiment_file)"
+    },
+    {
+      "id": "m9",
+      "from": "evaluator",
+      "to": "loop",
+      "label": "JSON metrics",
       "data": {
         "out": {
           "rmse": 0.33
@@ -37,9 +54,10 @@
       }
     },
     {
+      "id": "m10",
       "from": "loop",
-      "to": "results-store",
-      "label": "append result row",
+      "to": "store",
+      "label": "append(record)",
       "data": {
         "out": {
           "rmse": 0.33,

@@ -151,17 +151,19 @@ def rec_spec_task():
         repo = Path(tmp) / "repo"
         git_repo(repo)
         res = spec_task(repo, task, runner=R(), ui=QuietUI(), yes=True)
+    sha = hashlib.sha256(test_src.encode()).hexdigest()
     steps = [
-        {"from": "developer", "to": "spec-writer", "label": "spec(task)", "data": {"in": {"task": task}}},
-        {"from": "spec-writer", "to": "claude", "label": "draft spec + acceptance tests",
+        {"id": "m-spec", "from": "cli", "to": "spec", "label": "spec(task)", "data": {"in": {"task": task}}},
+        {"id": "m-draft-ret", "from": "port", "to": "spec", "label": "spec + tests",
          "data": {"out": {"spec_md": spec_md, "tests": res["test_paths"]}}},
-        {"from": "spec-writer", "to": "acceptance-tests", "label": "write + LOCK tests",
-         "data": {"out": {"locked": res["test_paths"],
-                          "sha256": hashlib.sha256(test_src.encode()).hexdigest()[:12] + "…"}}},
-        {"from": "spec-writer", "to": "developer", "label": "worktree ready",
+        {"id": "m-write", "from": "spec", "to": "tests", "label": "write spec + acceptance tests into the worktree",
+         "data": {"out": {"tests": res["test_paths"]}}},
+        {"id": "m-lock", "from": "spec", "to": "tests", "label": "lock acceptance tests read-only",
+         "data": {"out": {"locked": res["test_paths"], "sha256": sha[:12] + "…"}}},
+        {"id": "m-done", "from": "spec", "to": "cli", "label": "locked — ready for the engineer",
          "data": {"out": {"branch": res["branch"]}}},
     ]
-    return write_trace("spec-task", "draft-and-lock-acceptance", steps)
+    return write_trace("spec-task", "draft-and-lock-acceptance", steps, ".archik/spec-task.archik.seq.yaml")
 
 
 # --- init-lab (two slices from one run) ------------------------------------
@@ -190,13 +192,20 @@ def rec_init_lab():
          "data": {"out": {"objective": objective}}},
     ])
     return write_trace("init-lab", "approve-eval-loop", [
-        {"from": "init-architect", "to": "claude", "label": "propose evaluator",
+        {"id": "m-init", "from": "cli", "to": "arch", "label": "init(name, description)",
+         "data": {"in": {"name": "house-prices", "description": "predict house value"}}},
+        {"id": "m-draft-ret", "from": "port", "to": "arch", "label": "task + objective",
+         "data": {"out": {"objective": objective}}},
+        {"id": "m-write-task", "from": "arch", "to": "scaffold", "label": "write task.md + lab.json (objective)",
+         "data": {"out": {"objective": objective}}},
+        {"id": "m-propose-ret", "from": "port", "to": "arch", "label": "evaluation proposal",
          "data": {"out": {"summary": "Hold out 20%, fit, score RMSE on the held-out split."}}},
-        {"from": "developer", "to": "init-architect", "label": "review + approve",
+        {"id": "m-decide", "from": "cli", "to": "arch", "label": "approve | feedback",
          "data": {"in": {"decision": "approve"}}},
-        {"from": "init-architect", "to": "lab-scaffold", "label": "write evaluation.py + validate.py",
+        {"id": "m-write-eval", "from": "arch", "to": "scaffold", "label": "write evaluation.py + validate.py",
          "data": {"out": {"evaluation_py": eval_py}}},
-    ])
+        {"id": "m-done", "from": "arch", "to": "cli", "label": "lab ready — review, lock, run"},
+    ], ".archik/init-lab.archik.seq.yaml")
 
 
 # --- run-experiments (score-and-log, rank-by-objective, fix-on-error) -------
@@ -227,13 +236,14 @@ def rec_run_score():
         loop.score_with_fixes(lab, cfg, "hgb", exp, "sess-1", StructuredRunner(FakeTransport([])))
         row = loop.read_results(lab, cfg)[0]
     return write_trace("run-experiments", "score-and-log", [
-        {"from": "loop", "to": "evaluator", "label": "run frozen evaluator on the experiment",
-         "data": {"in": {"experiment": "experiments/hgb_01.py"}}},
-        {"from": "evaluator", "to": "loop", "label": "metrics (one JSON line)",
-         "data": {"out": {"rmse": row["rmse"]}}},
-        {"from": "loop", "to": "results-store", "label": "append result row",
+        {"id": "m2", "from": "cli", "to": "loop", "label": "run(lab, n)", "data": {"in": {"n": 1}}},
+        {"id": "m11", "from": "loop", "to": "evaluator", "label": "score(experiment_file)",
+         "data": {"in": {"experiment_file": "experiments/hgb_01.py"}}},
+        {"id": "m12", "from": "evaluator", "to": "loop", "label": "JSON metrics", "data": {"out": {"rmse": row["rmse"]}}},
+        {"id": "m13", "from": "loop", "to": "store", "label": "append(record, best_so_far)",
          "data": {"out": {"rmse": row["rmse"], "best_so_far": row["best_so_far"]}}},
-    ])
+        {"id": "m15", "from": "loop", "to": "cli", "label": "done"},
+    ], ".archik/run-experiments-happy.archik.seq.yaml")
 
 
 def rec_run_rank():
@@ -271,14 +281,16 @@ def rec_run_fix():
         finally:
             loop.evaluate = orig
     return write_trace("run-experiments", "fix-on-error", [
-        {"from": "loop", "to": "evaluator", "label": "run evaluator", "status": "error",
-         "data": {"in": {"experiment": "experiments/idea_01.py"}, "out": "ValueError: NaN in predictions"}},
-        {"from": "loop", "to": "claude", "label": "resume the Worker session to fix the error",
+        {"id": "m1", "from": "loop", "to": "evaluator", "label": "score(experiment_file)", "status": "error",
+         "data": {"in": {"experiment_file": "experiments/idea_01.py"}, "out": "ValueError: NaN in predictions"}},
+        {"id": "m2", "from": "evaluator", "to": "loop", "label": "ERROR — no metrics", "status": "error"},
+        {"id": "m3", "from": "loop", "to": "port", "label": "run(fixPrompt, schema, resume)",
          "data": {"in": {"error": "ValueError: NaN in predictions"}}},
-        {"from": "loop", "to": "evaluator", "label": "re-run evaluator", "data": {"out": {"rmse": row["rmse"]}}},
-        {"from": "loop", "to": "results-store", "label": "append result row",
+        {"id": "m8", "from": "loop", "to": "evaluator", "label": "score(experiment_file)"},
+        {"id": "m9", "from": "evaluator", "to": "loop", "label": "JSON metrics", "data": {"out": {"rmse": row["rmse"]}}},
+        {"id": "m10", "from": "loop", "to": "store", "label": "append(record)",
          "data": {"out": {"rmse": row["rmse"], "fixed_after": calls["n"] - 1}}},
-    ])
+    ], ".archik/run-experiments-fix.archik.seq.yaml")
 
 
 # --- diagnose-lab (check-wiring, fix-wiring) -------------------------------

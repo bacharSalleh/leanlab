@@ -2,11 +2,13 @@
   "version": "1.0",
   "useCase": "spec-task",
   "slice": "draft-and-lock-acceptance",
-  "recordedAt": "2026-06-26T18:33:03.317500+00:00",
+  "recordedAt": "2026-06-26T18:42:23.165739+00:00",
+  "seqFile": ".archik/spec-task.archik.seq.yaml",
   "steps": [
     {
-      "from": "developer",
-      "to": "spec-writer",
+      "id": "m-spec",
+      "from": "cli",
+      "to": "spec",
       "label": "spec(task)",
       "data": {
         "in": {
@@ -15,9 +17,10 @@
       }
     },
     {
-      "from": "spec-writer",
-      "to": "claude",
-      "label": "draft spec + acceptance tests",
+      "id": "m-draft-ret",
+      "from": "port",
+      "to": "spec",
+      "label": "spec + tests",
       "data": {
         "out": {
           "spec_md": "# Spec\n\nAdd a `/health` route returning HTTP 200 with body `ok`.",
@@ -28,9 +31,23 @@
       }
     },
     {
-      "from": "spec-writer",
-      "to": "acceptance-tests",
-      "label": "write + LOCK tests",
+      "id": "m-write",
+      "from": "spec",
+      "to": "tests",
+      "label": "write spec + acceptance tests into the worktree",
+      "data": {
+        "out": {
+          "tests": [
+            "tests/test_health.py"
+          ]
+        }
+      }
+    },
+    {
+      "id": "m-lock",
+      "from": "spec",
+      "to": "tests",
+      "label": "lock acceptance tests read-only",
       "data": {
         "out": {
           "locked": [
@@ -41,9 +58,10 @@
       }
     },
     {
-      "from": "spec-writer",
-      "to": "developer",
-      "label": "worktree ready",
+      "id": "m-done",
+      "from": "spec",
+      "to": "cli",
+      "label": "locked \u2014 ready for the engineer",
       "data": {
         "out": {
           "branch": "leanlab/add-health-endpoint-returning-200"

@@ -2,12 +2,54 @@
   "version": "1.0",
   "useCase": "init-lab",
   "slice": "approve-eval-loop",
-  "recordedAt": "2026-06-26T18:33:03.319257+00:00",
+  "recordedAt": "2026-06-26T18:42:23.167213+00:00",
+  "seqFile": ".archik/init-lab.archik.seq.yaml",
   "steps": [
     {
-      "from": "init-architect",
-      "to": "claude",
-      "label": "propose evaluator",
+      "id": "m-init",
+      "from": "cli",
+      "to": "arch",
+      "label": "init(name, description)",
+      "data": {
+        "in": {
+          "name": "house-prices",
+          "description": "predict house value"
+        }
+      }
+    },
+    {
+      "id": "m-draft-ret",
+      "from": "port",
+      "to": "arch",
+      "label": "task + objective",
+      "data": {
+        "out": {
+          "objective": {
+            "metric": "rmse",
+            "direction": "min"
+          }
+        }
+      }
+    },
+    {
+      "id": "m-write-task",
+      "from": "arch",
+      "to": "scaffold",
+      "label": "write task.md + lab.json (objective)",
+      "data": {
+        "out": {
+          "objective": {
+            "metric": "rmse",
+            "direction": "min"
+          }
+        }
+      }
+    },
+    {
+      "id": "m-propose-ret",
+      "from": "port",
+      "to": "arch",
+      "label": "evaluation proposal",
       "data": {
         "out": {
           "summary": "Hold out 20%, fit, score RMSE on the held-out split."
@@ -15,9 +57,10 @@
       }
     },
     {
-      "from": "developer",
-      "to": "init-architect",
-      "label": "review + approve",
+      "id": "m-decide",
+      "from": "cli",
+      "to": "arch",
+      "label": "approve | feedback",
       "data": {
         "in": {
           "decision": "approve"
@@ -25,14 +68,21 @@
       }
     },
     {
-      "from": "init-architect",
-      "to": "lab-scaffold",
+      "id": "m-write-eval",
+      "from": "arch",
+      "to": "scaffold",
       "label": "write evaluation.py + validate.py",
       "data": {
         "out": {
           "evaluation_py": "print('{\"rmse\": 0.0}')"
         }
       }
+    },
+    {
+      "id": "m-done",
+      "from": "arch",
+      "to": "cli",
+      "label": "lab ready \u2014 review, lock, run"
     }
   ]
 }
