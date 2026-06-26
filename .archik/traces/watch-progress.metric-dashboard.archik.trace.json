@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "useCase": "watch-progress",
+  "slice": "metric-dashboard",
+  "recordedAt": "2026-06-26T18:33:03.685456+00:00",
+  "steps": [
+    {
+      "from": "developer",
+      "to": "dashboard",
+      "label": "open the dashboard",
+      "data": {
+        "in": {
+          "lab": "house-prices"
+        }
+      }
+    },
+    {
+      "from": "dashboard",
+      "to": "results-store",
+      "label": "read results.jsonl",
+      "data": {
+        "out": {
+          "experiments": 2
+        }
+      }
+    },
+    {
+      "from": "dashboard",
+      "to": "developer",
+      "label": "render stats + progress chart + table",
+      "data": {
+        "out": {
+          "experiments": 2,
+          "best_rmse": 0.3
+        }
+      }
+    }
+  ]
+}

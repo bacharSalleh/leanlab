@@ -2,8 +2,8 @@
   "version": "1.0",
   "useCase": "build-task",
   "slice": "implement-to-green",
+  "recordedAt": "2026-06-26T18:33:03.238148+00:00",
   "seqFile": ".archik/build-task.archik.seq.yaml",
-  "recordedAt": "2026-06-26T18:11:19.947708+00:00",
   "steps": [
     {
       "id": "m-build",
@@ -48,8 +48,7 @@
       "data": {
         "out": {
           "approved": true,
-          "score": 95.0,
-          "feedback": ""
+          "score": 95.0
         }
       }
     },

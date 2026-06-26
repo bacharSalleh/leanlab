@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "useCase": "init-lab",
+  "slice": "approve-eval-loop",
+  "recordedAt": "2026-06-26T18:33:03.319257+00:00",
+  "steps": [
+    {
+      "from": "init-architect",
+      "to": "claude",
+      "label": "propose evaluator",
+      "data": {
+        "out": {
+          "summary": "Hold out 20%, fit, score RMSE on the held-out split."
+        }
+      }
+    },
+    {
+      "from": "developer",
+      "to": "init-architect",
+      "label": "review + approve",
+      "data": {
+        "in": {
+          "decision": "approve"
+        }
+      }
+    },
+    {
+      "from": "init-architect",
+      "to": "lab-scaffold",
+      "label": "write evaluation.py + validate.py",
+      "data": {
+        "out": {
+          "evaluation_py": "print('{\"rmse\": 0.0}')"
+        }
+      }
+    }
+  ]
+}

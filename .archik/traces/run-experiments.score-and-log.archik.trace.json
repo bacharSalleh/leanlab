@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "useCase": "run-experiments",
+  "slice": "score-and-log",
+  "recordedAt": "2026-06-26T18:33:03.336393+00:00",
+  "steps": [
+    {
+      "from": "loop",
+      "to": "evaluator",
+      "label": "run frozen evaluator on the experiment",
+      "data": {
+        "in": {
+          "experiment": "experiments/hgb_01.py"
+        }
+      }
+    },
+    {
+      "from": "evaluator",
+      "to": "loop",
+      "label": "metrics (one JSON line)",
+      "data": {
+        "out": {
+          "rmse": 0.42
+        }
+      }
+    },
+    {
+      "from": "loop",
+      "to": "results-store",
+      "label": "append result row",
+      "data": {
+        "out": {
+          "rmse": 0.42,
+          "best_so_far": true
+        }
+      }
+    }
+  ]
+}

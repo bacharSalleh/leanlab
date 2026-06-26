@@ -1,0 +1,54 @@
+{
+  "version": "1.0",
+  "useCase": "spec-task",
+  "slice": "draft-and-lock-acceptance",
+  "recordedAt": "2026-06-26T18:33:03.317500+00:00",
+  "steps": [
+    {
+      "from": "developer",
+      "to": "spec-writer",
+      "label": "spec(task)",
+      "data": {
+        "in": {
+          "task": "add a /health endpoint returning 200"
+        }
+      }
+    },
+    {
+      "from": "spec-writer",
+      "to": "claude",
+      "label": "draft spec + acceptance tests",
+      "data": {
+        "out": {
+          "spec_md": "# Spec\n\nAdd a `/health` route returning HTTP 200 with body `ok`.",
+          "tests": [
+            "tests/test_health.py"
+          ]
+        }
+      }
+    },
+    {
+      "from": "spec-writer",
+      "to": "acceptance-tests",
+      "label": "write + LOCK tests",
+      "data": {
+        "out": {
+          "locked": [
+            "tests/test_health.py"
+          ],
+          "sha256": "bca8894340ad\u2026"
+        }
+      }
+    },
+    {
+      "from": "spec-writer",
+      "to": "developer",
+      "label": "worktree ready",
+      "data": {
+        "out": {
+          "branch": "leanlab/add-health-endpoint-returning-200"
+        }
+      }
+    }
+  ]
+}

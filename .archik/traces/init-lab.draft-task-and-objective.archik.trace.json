@@ -1,0 +1,45 @@
+{
+  "version": "1.0",
+  "useCase": "init-lab",
+  "slice": "draft-task-and-objective",
+  "recordedAt": "2026-06-26T18:33:03.319175+00:00",
+  "steps": [
+    {
+      "from": "developer",
+      "to": "init-architect",
+      "label": "init(name, description)",
+      "data": {
+        "in": {
+          "name": "house-prices",
+          "description": "predict house value"
+        }
+      }
+    },
+    {
+      "from": "init-architect",
+      "to": "claude",
+      "label": "draft task.md + objective",
+      "data": {
+        "out": {
+          "objective": {
+            "metric": "rmse",
+            "direction": "min"
+          }
+        }
+      }
+    },
+    {
+      "from": "init-architect",
+      "to": "lab-scaffold",
+      "label": "write task.md + lab.json",
+      "data": {
+        "out": {
+          "objective": {
+            "metric": "rmse",
+            "direction": "min"
+          }
+        }
+      }
+    }
+  ]
+}

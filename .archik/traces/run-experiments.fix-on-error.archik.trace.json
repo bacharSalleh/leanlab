@@ -1,0 +1,51 @@
+{
+  "version": "1.0",
+  "useCase": "run-experiments",
+  "slice": "fix-on-error",
+  "recordedAt": "2026-06-26T18:33:03.378334+00:00",
+  "steps": [
+    {
+      "from": "loop",
+      "to": "evaluator",
+      "label": "run evaluator",
+      "status": "error",
+      "data": {
+        "in": {
+          "experiment": "experiments/idea_01.py"
+        },
+        "out": "ValueError: NaN in predictions"
+      }
+    },
+    {
+      "from": "loop",
+      "to": "claude",
+      "label": "resume the Worker session to fix the error",
+      "data": {
+        "in": {
+          "error": "ValueError: NaN in predictions"
+        }
+      }
+    },
+    {
+      "from": "loop",
+      "to": "evaluator",
+      "label": "re-run evaluator",
+      "data": {
+        "out": {
+          "rmse": 0.33
+        }
+      }
+    },
+    {
+      "from": "loop",
+      "to": "results-store",
+      "label": "append result row",
+      "data": {
+        "out": {
+          "rmse": 0.33,
+          "fixed_after": 1
+        }
+      }
+    }
+  ]
+}

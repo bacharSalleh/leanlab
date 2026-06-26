@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "useCase": "diagnose-lab",
+  "slice": "check-wiring",
+  "recordedAt": "2026-06-26T18:33:03.450696+00:00",
+  "steps": [
+    {
+      "from": "developer",
+      "to": "lab-doctor",
+      "label": "check(lab)",
+      "data": {
+        "in": {
+          "lab": "demo"
+        }
+      }
+    },
+    {
+      "from": "lab-doctor",
+      "to": "lab-scaffold",
+      "label": "probe wiring (args, metric key, files)",
+      "data": {
+        "out": {
+          "lab.json": "ok",
+          "task.md": "ok",
+          "evaluation.py": "ok",
+          "validate.py": "ok",
+          "experiments/": "ok",
+          "agent specs": "ok",
+          "agent prompts": "ok",
+          "Director_Notes.md": "ok",
+          "Critic_Feedback.md": "ok",
+          "eval args": "ok",
+          "eval metric": "ok",
+          "validate args": "ok"
+        }
+      }
+    }
+  ]
+}

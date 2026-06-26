@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "useCase": "diagnose-lab",
+  "slice": "fix-wiring",
+  "recordedAt": "2026-06-26T18:33:03.652273+00:00",
+  "steps": [
+    {
+      "from": "lab-doctor",
+      "to": "lab-scaffold",
+      "label": "metric-key mismatch detected",
+      "status": "error",
+      "data": {
+        "out": {
+          "eval metric": "fail",
+          "objective": "FPS",
+          "evaluator prints": "score"
+        }
+      }
+    },
+    {
+      "from": "lab-doctor",
+      "to": "claude",
+      "label": "ask Claude to repair the wiring",
+      "data": {
+        "in": {
+          "problem": "objective metric 'FPS' not in evaluator output"
+        }
+      }
+    },
+    {
+      "from": "lab-doctor",
+      "to": "lab-scaffold",
+      "label": "re-check after fix",
+      "data": {
+        "out": {
+          "eval metric": "ok",
+          "resolved": true
+        }
+      }
+    }
+  ]
+}

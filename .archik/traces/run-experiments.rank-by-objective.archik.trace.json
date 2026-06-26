@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "useCase": "run-experiments",
+  "slice": "rank-by-objective",
+  "recordedAt": "2026-06-26T18:33:03.372057+00:00",
+  "steps": [
+    {
+      "from": "loop",
+      "to": "results-store",
+      "label": "read all results",
+      "data": {
+        "out": [
+          {
+            "rmse": 0.42
+          },
+          {
+            "rmse": 0.3
+          }
+        ]
+      }
+    },
+    {
+      "from": "loop",
+      "to": "loop",
+      "label": "rank by objective (min rmse)",
+      "data": {
+        "out": {
+          "best": {
+            "rmse": 0.3
+          },
+          "objective": "min rmse"
+        }
+      }
+    },
+    {
+      "from": "loop",
+      "to": "claude",
+      "label": "inject top-N into the next Worker prompt",
+      "data": {
+        "out": {
+          "best_so_far": 0.3
+        }
+      }
+    }
+  ]
+}

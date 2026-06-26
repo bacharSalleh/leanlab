@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "useCase": "watch-progress",
+  "slice": "coding-board",
+  "recordedAt": "2026-06-26T18:33:03.653613+00:00",
+  "steps": [
+    {
+      "from": "developer",
+      "to": "coding-board",
+      "label": "open the board (GET /api/state)",
+      "data": {
+        "in": {
+          "repo": "my-repo"
+        }
+      }
+    },
+    {
+      "from": "coding-board",
+      "to": "results-store",
+      "label": "read worktrees + results + events",
+      "data": {
+        "out": {
+          "tasks": [
+            {
+              "slug": "add-health",
+              "status": "merged"
+            },
+            {
+              "slug": "fix-bug",
+              "status": "failed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "from": "coding-board",
+      "to": "developer",
+      "label": "render the board",
+      "data": {
+        "out": {
+          "totals": {
+            "tasks": 2,
+            "merged": 1,
+            "failed": 1,
+            "open": 0,
+            "tokens": 0,
+            "cost": 0.0,
+            "success": 50
+          }
+        }
+      }
+    }
+  ]
+}
