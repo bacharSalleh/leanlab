@@ -18,7 +18,7 @@ jobs:
       id-token: write          # OIDC: PyPI Trusted Publishing mints a short-lived token
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The wheel must ship the compiled React board (board_dist/), so build it first.
       - uses: actions/setup-node@v4
