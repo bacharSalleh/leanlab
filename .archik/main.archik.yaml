@@ -10,6 +10,10 @@ nodes:
       - .archik/init-lab.archik.seq.yaml
       - .archik/spec-task.archik.seq.yaml
       - .archik/build-task.archik.seq.yaml
+      - .archik/diagnose-check.archik.seq.yaml
+      - .archik/diagnose-fix.archik.seq.yaml
+      - .archik/init-draft.archik.seq.yaml
+      - .archik/metric-dashboard.archik.seq.yaml
     sourcePath: leanlab/cli.py
     stereotype: boundary
   - id: framework
@@ -25,6 +29,7 @@ nodes:
     seqFiles:
       - .archik/run-experiments-happy.archik.seq.yaml
       - .archik/run-experiments-fix.archik.seq.yaml
+      - .archik/run-rank.archik.seq.yaml
     sourcePath: leanlab/core/loop.py
     stereotype: control
   - id: dashboard
@@ -32,7 +37,10 @@ nodes:
     name: Dashboard
     description: Schema-driven live dashboard (core/monitor.py) — reads results.jsonl and agent transcripts to show the progress chart, results table, and live agent stream.
     parentId: framework
+    seqFiles:
+      - .archik/metric-dashboard.archik.seq.yaml
     sourcePath: leanlab/core/monitor.py
+    stereotype: control
   - id: agent-port
     kind: port
     name: Agent port
@@ -44,6 +52,9 @@ nodes:
       - .archik/init-lab.archik.seq.yaml
       - .archik/spec-task.archik.seq.yaml
       - .archik/build-task.archik.seq.yaml
+      - .archik/diagnose-fix.archik.seq.yaml
+      - .archik/init-draft.archik.seq.yaml
+      - .archik/run-rank.archik.seq.yaml
     sourcePath: leanlab/core/agents/port.py
     stereotype: boundary
   - id: agent-protocol
@@ -66,7 +77,11 @@ nodes:
       - .archik/init-lab.archik.seq.yaml
       - .archik/spec-task.archik.seq.yaml
       - .archik/build-task.archik.seq.yaml
+      - .archik/diagnose-fix.archik.seq.yaml
+      - .archik/init-draft.archik.seq.yaml
+      - .archik/run-rank.archik.seq.yaml
     sourcePath: leanlab/core/agents/claude.py
+    stereotype: control
   - id: hermes-agent
     kind: adapter
     name: Hermes agent
@@ -102,6 +117,8 @@ nodes:
     seqFiles:
       - .archik/run-experiments-happy.archik.seq.yaml
       - .archik/run-experiments-fix.archik.seq.yaml
+      - .archik/run-rank.archik.seq.yaml
+      - .archik/metric-dashboard.archik.seq.yaml
     stereotype: entity
   - id: claude
     kind: external
@@ -113,6 +130,10 @@ nodes:
       - .archik/init-lab.archik.seq.yaml
       - .archik/spec-task.archik.seq.yaml
       - .archik/build-task.archik.seq.yaml
+      - .archik/diagnose-fix.archik.seq.yaml
+      - .archik/init-draft.archik.seq.yaml
+      - .archik/run-rank.archik.seq.yaml
+    stereotype: control
   - id: init-architect
     kind: service
     name: Init architect
@@ -120,6 +141,7 @@ nodes:
     parentId: framework
     seqFiles:
       - .archik/init-lab.archik.seq.yaml
+      - .archik/init-draft.archik.seq.yaml
     sourcePath: leanlab/core/init.py
     status: active
     stereotype: control
@@ -130,6 +152,9 @@ nodes:
     parentId: lab
     seqFiles:
       - .archik/init-lab.archik.seq.yaml
+      - .archik/diagnose-check.archik.seq.yaml
+      - .archik/diagnose-fix.archik.seq.yaml
+      - .archik/init-draft.archik.seq.yaml
     sourcePath: .leanlab/house-prices/lab.json
     status: active
     stereotype: entity
@@ -138,6 +163,9 @@ nodes:
     name: Lab doctor
     description: Preflight checks that a lab is wired correctly (config, files, claude CLI, and a cheap probe of the evaluator's arg + metric wiring), and uses Claude to fix problems it finds. Run by `leanlab check`/`fix`, as a `run` preflight, and by init's self-verify.
     parentId: framework
+    seqFiles:
+      - .archik/diagnose-check.archik.seq.yaml
+      - .archik/diagnose-fix.archik.seq.yaml
     sourcePath: leanlab/core/doctor.py
     status: active
     stereotype: control
@@ -215,6 +243,7 @@ nodes:
     parentId: coding
     seqFiles:
       - .archik/build-task.archik.seq.yaml
+      - .archik/coding-board.archik.seq.yaml
     status: active
     stereotype: entity
   - id: coding-board
@@ -222,12 +251,17 @@ nodes:
     name: Coding board
     description: Live dashboard for a coding lab — task cards with gate status (spec'd / merged / failed), attempts, and the PLAYBOOK. Reads .leanlab/worktrees, coding-results.jsonl, and PLAYBOOK.md.
     parentId: coding
+    seqFiles:
+      - .archik/coding-board.archik.seq.yaml
     sourcePath: leanlab/core/coding/board.py
     status: active
+    stereotype: control
   - id: coding-board-ui
     kind: frontend
     name: Coding board UI
     description: React + Tailwind single-page app for the coding board — renders the loop, the sortable task table, the round-by-round timeline and the agent chat from the board's /api/state, /api/task and /api/stream (SSE) endpoints. Built into the wheel.
+    seqFiles:
+      - .archik/coding-board.archik.seq.yaml
     sourcePath: frontend/src
     status: active
     stereotype: boundary

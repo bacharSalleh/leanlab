@@ -1,0 +1,71 @@
+version: "1.0"
+name: Initialise a lab — draft the task + objective
+description: >-
+  The first half of `leanlab init`: scaffold the lab folder, then have Claude turn the
+  operator's plain-words description into a task.md and an objective {metric, direction}.
+realizes:
+  useCase: init-lab
+  slice: draft-task-and-objective
+participants:
+  - id: cli
+    nodeId: leanlab-cli
+  - id: arch
+    nodeId: init-architect
+  - id: port
+    nodeId: agent-port
+  - id: agent
+    nodeId: claude-agent
+  - id: llm
+    nodeId: claude
+  - id: scaffold
+    nodeId: lab-scaffold
+steps:
+  - type: message
+    id: m-init
+    from: cli
+    to: arch
+    label: "init(name, description)"
+    arrow: sync
+    activate: true
+  - type: message
+    id: m-skeleton
+    from: arch
+    to: scaffold
+    label: "create .leanlab/<name>/ skeleton"
+    arrow: sync
+  - type: message
+    id: m-draft
+    from: arch
+    to: port
+    label: "draft task.md + objective from the description"
+    arrow: sync
+  - type: message
+    id: m-draft-agent
+    from: port
+    to: agent
+    label: "run_structured(architect prompt)"
+    arrow: sync
+  - type: message
+    id: m-draft-llm
+    from: agent
+    to: llm
+    label: "claude -p"
+    arrow: sync
+  - type: message
+    id: m-draft-llm-ret
+    from: llm
+    to: agent
+    label: "drafted task + objective"
+    arrow: return
+  - type: message
+    id: m-draft-ret
+    from: port
+    to: arch
+    label: "task + objective"
+    arrow: return
+  - type: message
+    id: m-write
+    from: arch
+    to: scaffold
+    label: "write task.md + lab.json (objective)"
+    arrow: sync

@@ -1,0 +1,46 @@
+version: "1.0"
+name: Diagnose a lab — check wiring
+description: >-
+  `leanlab check` probes a lab's wiring cheaply (no agents, no run): does the evaluator
+  parse the command's args, does it print the objective's metric key, are the files present.
+realizes:
+  useCase: diagnose-lab
+  slice: check-wiring
+participants:
+  - id: cli
+    nodeId: leanlab-cli
+  - id: doctor
+    nodeId: lab-doctor
+  - id: scaffold
+    nodeId: lab-scaffold
+steps:
+  - type: note
+    id: n-start
+    position: over
+    participants: [cli]
+    text: "Operator runs `leanlab check <lab>`."
+  - type: message
+    id: m-check
+    from: cli
+    to: doctor
+    label: "check(lab)"
+    arrow: sync
+    activate: true
+  - type: message
+    id: m-probe
+    from: doctor
+    to: scaffold
+    label: "probe args, metric key, required files"
+    arrow: sync
+  - type: message
+    id: m-probe-ret
+    from: scaffold
+    to: doctor
+    label: "lab.json + evaluator source"
+    arrow: return
+  - type: message
+    id: m-report
+    from: doctor
+    to: cli
+    label: "report: ok | failures"
+    arrow: return

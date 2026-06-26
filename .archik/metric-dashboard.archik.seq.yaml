@@ -1,0 +1,46 @@
+version: "1.0"
+name: Watch progress — metric dashboard
+description: >-
+  `leanlab serve` streams a live dashboard for a metric lab: it reads the results book and
+  renders the stat chips, the progress chart, and the experiments table.
+realizes:
+  useCase: watch-progress
+  slice: metric-dashboard
+participants:
+  - id: cli
+    nodeId: leanlab-cli
+  - id: dash
+    nodeId: dashboard
+  - id: store
+    nodeId: results-store
+steps:
+  - type: note
+    id: n-start
+    position: over
+    participants: [cli]
+    text: "Operator runs `leanlab serve <lab>`."
+  - type: message
+    id: m-serve
+    from: cli
+    to: dash
+    label: "serve(lab)"
+    arrow: sync
+    activate: true
+  - type: message
+    id: m-read
+    from: dash
+    to: store
+    label: "read results.jsonl"
+    arrow: sync
+  - type: message
+    id: m-read-ret
+    from: store
+    to: dash
+    label: "result rows"
+    arrow: return
+  - type: message
+    id: m-render
+    from: dash
+    to: cli
+    label: "stream stats + progress chart + table"
+    arrow: return

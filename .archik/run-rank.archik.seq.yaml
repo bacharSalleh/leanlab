@@ -1,0 +1,57 @@
+version: "1.0"
+name: Run experiments — rank by objective
+description: >-
+  The loop reads the results book, ranks experiments by the configured objective, and injects
+  the top-N (the lab's memory) into the next Worker's prompt so each attempt starts smarter.
+realizes:
+  useCase: run-experiments
+  slice: rank-by-objective
+participants:
+  - id: loop
+    nodeId: loop
+  - id: store
+    nodeId: results-store
+  - id: port
+    nodeId: agent-port
+  - id: agent
+    nodeId: claude-agent
+  - id: llm
+    nodeId: claude
+steps:
+  - type: message
+    id: m-read
+    from: loop
+    to: store
+    label: "read all results"
+    arrow: sync
+    activate: true
+  - type: message
+    id: m-read-ret
+    from: store
+    to: loop
+    label: "result records"
+    arrow: return
+  - type: message
+    id: m-rank
+    from: loop
+    to: loop
+    label: "rank by objective (min/max metric); take top-N"
+    arrow: sync
+  - type: message
+    id: m-inject
+    from: loop
+    to: port
+    label: "launch next Worker with top-N injected as memory"
+    arrow: sync
+  - type: message
+    id: m-inject-agent
+    from: port
+    to: agent
+    label: "run_structured(worker prompt + memory)"
+    arrow: sync
+  - type: message
+    id: m-inject-llm
+    from: agent
+    to: llm
+    label: "claude -p"
+    arrow: sync

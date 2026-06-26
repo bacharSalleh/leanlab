@@ -31,8 +31,12 @@ slices:
     flows: [basic]
     tests: [tests/test_doctor.py]
     status: active
+    realization:
+      seqFile: .archik/diagnose-check.archik.seq.yaml
   - id: fix-wiring
     description: Claude repairs the failures the check found and re-checks until green.
     flows: [basic, repair]
     tests: [tests/test_doctor.py]
     status: active
+    realization:
+      seqFile: .archik/diagnose-fix.archik.seq.yaml

@@ -30,6 +30,8 @@ slices:
     flows: [basic]
     status: active
     tests: [tests/test_core.py]
+    realization:
+      seqFile: .archik/run-rank.archik.seq.yaml
   - id: score-and-log
     description: A valid experiment is scored by the frozen evaluator and exactly one record is appended to results.jsonl.
     flows: [basic]

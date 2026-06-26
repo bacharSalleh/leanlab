@@ -1,0 +1,83 @@
+version: "1.0"
+name: Diagnose a lab — fix wiring
+description: >-
+  `leanlab fix` re-checks the lab and, while it's broken, has Claude repair the wiring
+  (e.g. an objective metric key the evaluator never prints) and re-checks.
+realizes:
+  useCase: diagnose-lab
+  slice: fix-wiring
+participants:
+  - id: cli
+    nodeId: leanlab-cli
+  - id: doctor
+    nodeId: lab-doctor
+  - id: port
+    nodeId: agent-port
+  - id: agent
+    nodeId: claude-agent
+  - id: llm
+    nodeId: claude
+  - id: scaffold
+    nodeId: lab-scaffold
+steps:
+  - type: message
+    id: m-fix
+    from: cli
+    to: doctor
+    label: "fix(lab)"
+    arrow: sync
+    activate: true
+  - type: message
+    id: m-detect
+    from: doctor
+    to: scaffold
+    label: "detect wiring mismatch (metric key / args / files)"
+    arrow: sync
+  - type: group
+    id: g-loop
+    kind: loop
+    condition: "while broken, up to max-fix-calls"
+    branches:
+      - steps:
+          - type: message
+            id: m-ask
+            from: doctor
+            to: port
+            label: "ask Claude to repair the wiring"
+            arrow: sync
+          - type: message
+            id: m-run
+            from: port
+            to: agent
+            label: "run_plain(fix prompt)"
+            arrow: sync
+          - type: message
+            id: m-llm
+            from: agent
+            to: llm
+            label: "claude -p (edits the lab files)"
+            arrow: sync
+          - type: message
+            id: m-llm-ret
+            from: llm
+            to: agent
+            label: "edits made"
+            arrow: return
+          - type: message
+            id: m-write
+            from: agent
+            to: scaffold
+            label: "write the corrected lab.json"
+            arrow: sync
+          - type: message
+            id: m-recheck
+            from: doctor
+            to: scaffold
+            label: "re-check the wiring"
+            arrow: sync
+  - type: message
+    id: m-done
+    from: doctor
+    to: cli
+    label: "resolved | still broken"
+    arrow: return

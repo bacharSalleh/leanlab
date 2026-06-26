@@ -36,6 +36,8 @@ slices:
     flows: [basic]
     tests: [tests/test_init.py]
     status: active
+    realization:
+      seqFile: .archik/init-draft.archik.seq.yaml
   - id: approve-eval-loop
     description: Claude proposes an evaluator; the operator approves to write it, or gives feedback to revise and re-propose.
     flows: [basic, eval-feedback]
