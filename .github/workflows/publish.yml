@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@v7
 
       # The wheel must ship the compiled React board (board_dist/), so build it first.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: npm
