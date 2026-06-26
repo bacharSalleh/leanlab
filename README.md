@@ -16,6 +16,8 @@ spec → gate → review → merge loop with locked acceptance tests.
 pipx install leanlab        # or:  pip install leanlab   ·   uvx leanlab
 ```
 
+📦 On PyPI: **[pypi.org/project/leanlab](https://pypi.org/project/leanlab/)**
+
 Requires **Python 3.11+** and the **`claude` CLI** (the agents run on Claude Code).
 
 ## Quick start
