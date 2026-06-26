@@ -1,0 +1,12 @@
+{
+  "name": "house-prices",
+  "description": "Predict California median house value; minimize test RMSE.",
+  "objective": { "metric": "rmse", "direction": "min" },
+  "experiments_dir": "experiments",
+  "results_file": "results.jsonl",
+  "validate_cmd": "uv run python validate.py --experiment {file}",
+  "eval_cmd": "uv run python evaluation.py --experiment {file}",
+  "director_every": 5,
+  "critic_every": 5,
+  "max_fix_calls": 3
+}

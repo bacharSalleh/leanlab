@@ -1,0 +1,111 @@
+version: "1.0"
+name: "Run experiments — fix on error"
+description: "The evaluator errors; the loop resumes the Worker to fix, up to a limit, else logs the experiment invalid."
+realizes:
+  useCase: run-experiments
+  slice: fix-on-error
+participants:
+  - id: loop
+    nodeId: loop
+    label: Loop
+  - id: port
+    nodeId: agent-port
+    label: Agent port
+  - id: agent
+    nodeId: claude-agent
+    label: Claude agent
+  - id: claude
+    nodeId: claude
+    label: Claude LLM
+  - id: evaluator
+    nodeId: evaluator
+    label: Evaluator
+  - id: store
+    nodeId: results-store
+    label: Results store
+steps:
+  - type: note
+    id: n1
+    position: over
+    participants: [loop]
+    text: "Worker already produced experiment_file (see happy path)"
+  - type: message
+    id: m1
+    from: loop
+    to: evaluator
+    label: "score(experiment_file)"
+    arrow: sync
+  - type: message
+    id: m2
+    from: evaluator
+    to: loop
+    label: "ERROR — no metrics"
+    arrow: return
+  - type: group
+    id: g1
+    kind: alt
+    condition: "[fixes vs max_fix_calls]"
+    branches:
+      - label: "[retry: fixes < max]"
+        steps:
+          - type: note
+            id: n2
+            position: over
+            participants: [loop, port]
+            text: "Resume the same Worker session with the error text"
+          - type: message
+            id: m3
+            from: loop
+            to: port
+            label: "run(fixPrompt, schema, resume)"
+            arrow: sync
+          - type: message
+            id: m4
+            from: port
+            to: agent
+            label: "run(prompt, resume)"
+            arrow: sync
+          - type: message
+            id: m5
+            from: agent
+            to: claude
+            label: "claude -p --resume"
+            arrow: sync
+          - type: message
+            id: m6
+            from: claude
+            to: agent
+            label: "assistant reply"
+            arrow: return
+          - type: message
+            id: m7
+            from: agent
+            to: loop
+            label: "{experiment_file, valid}"
+            arrow: return
+          - type: message
+            id: m8
+            from: loop
+            to: evaluator
+            label: "score(experiment_file)"
+            arrow: sync
+          - type: message
+            id: m9
+            from: evaluator
+            to: loop
+            label: "JSON metrics"
+            arrow: return
+          - type: message
+            id: m10
+            from: loop
+            to: store
+            label: "append(record)"
+            arrow: sync
+      - label: "[give up: fixes == max]"
+        steps:
+          - type: message
+            id: m11
+            from: loop
+            to: store
+            label: "append(invalid record)"
+            arrow: sync

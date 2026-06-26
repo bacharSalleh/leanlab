@@ -1,0 +1,12 @@
+version: "1.0"
+actors:
+  - id: operator
+    kind: human
+    description: The researcher who runs leanlab — creates a lab, starts experiment runs, reviews the results table, and watches the dashboard.
+    goals:
+      - create-a-lab
+      - run-experiments
+      - review-progress
+  - id: claude
+    kind: external-system
+    description: The Claude LLM the loop launches as Worker / Director / Critic agent sessions to write, steer, and critique experiments. External to leanlab — invoked via the claude CLI.

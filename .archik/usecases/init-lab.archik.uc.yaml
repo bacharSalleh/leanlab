@@ -1,0 +1,45 @@
+version: "1.0"
+id: init-lab
+name: Initialise a lab
+status: active
+primaryActor: operator
+secondaryActors:
+  - claude
+goal: >-
+  The operator describes a research task in plain words and walks away with a
+  ready-to-run lab — task.md, an objective, and a frozen evaluator drafted by Claude
+  and approved by the operator.
+preconditions:
+  - leanlab is installed and run from inside the operator's project.
+postconditions:
+  - "A new .leanlab/<name>/ holds task.md, lab.json (with the objective), validate.py, and an approved evaluation.py."
+flows:
+  basic:
+    steps:
+      - "Operator runs leanlab init <name> and describes the task in plain words."
+      - "The init-architect creates the .leanlab/<name>/ skeleton."
+      - "The init-architect asks Claude to draft task.md and infer the objective into lab.json."
+      - "The init-architect asks Claude to propose an evaluation approach, interviewing the operator for data if the task needs it."
+      - "The init-architect shows the proposed evaluation; the operator approves it."
+      - "The init-architect asks Claude to write evaluation.py and validate.py into the lab."
+      - "The init-architect reminds the operator to review and lock the evaluator, then run."
+  alternates:
+    - id: eval-feedback
+      branchFrom: basic.5
+      steps:
+        - "The operator rejects the proposal and gives feedback instead of approving."
+        - "The init-architect re-asks Claude with that feedback and proposes a revised evaluation."
+        - "The loop returns to basic step 5 until the operator approves."
+slices:
+  - id: draft-task-and-objective
+    description: From the operator's description, Claude drafts task.md and sets lab.json's objective.
+    flows: [basic]
+    tests: [tests/test_init.py]
+    status: active
+  - id: approve-eval-loop
+    description: Claude proposes an evaluator; the operator approves to write it, or gives feedback to revise and re-propose.
+    flows: [basic, eval-feedback]
+    tests: [tests/test_init.py]
+    status: active
+    realization:
+      seqFile: .archik/init-lab.archik.seq.yaml

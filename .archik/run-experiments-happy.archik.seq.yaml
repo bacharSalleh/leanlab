@@ -1,0 +1,138 @@
+version: "1.0"
+name: "Run experiments — happy path"
+description: "One experiment — the Worker writes a valid file, the evaluator scores it, and the loop logs a record."
+realizes:
+  useCase: run-experiments
+  slice: score-and-log
+participants:
+  - id: cli
+    nodeId: leanlab-cli
+    label: leanlab CLI
+  - id: loop
+    nodeId: loop
+    label: Loop
+  - id: port
+    nodeId: agent-port
+    label: Agent port
+  - id: agent
+    nodeId: claude-agent
+    label: Claude agent
+  - id: protocol
+    nodeId: agent-protocol
+    label: Structured retry
+  - id: claude
+    nodeId: claude
+    label: Claude LLM
+  - id: evaluator
+    nodeId: evaluator
+    label: Evaluator
+  - id: store
+    nodeId: results-store
+    label: Results store
+steps:
+  - type: note
+    id: n0
+    position: left_of
+    participants: [cli]
+    text: "Operator runs: leanlab run <lab> --n N"
+  - type: message
+    id: m2
+    from: cli
+    to: loop
+    label: "run(lab, n)"
+    arrow: sync
+    activate: true
+  - type: note
+    id: n1
+    position: over
+    participants: [loop]
+    text: "Build the Worker prompt: task + memory + Director/Critic notes"
+  - type: message
+    id: m3
+    from: loop
+    to: port
+    label: "run(workerPrompt, schema)"
+    arrow: sync
+  - type: message
+    id: m4
+    from: port
+    to: agent
+    label: "run(prompt, schema)"
+    arrow: sync
+  - type: group
+    id: g1
+    kind: loop
+    condition: "[until valid JSON, <= max retries]"
+    branches:
+      - steps:
+          - type: message
+            id: m5
+            from: agent
+            to: claude
+            label: "claude -p prompt"
+            arrow: sync
+          - type: message
+            id: m6
+            from: claude
+            to: agent
+            label: "assistant reply"
+            arrow: return
+          - type: message
+            id: m7
+            from: agent
+            to: protocol
+            label: "validate(reply, schema)"
+            arrow: sync
+          - type: note
+            id: n2
+            position: right_of
+            participants: [protocol]
+            text: "On malformed JSON: re-prompt 'reply with valid JSON only' and loop"
+          - type: message
+            id: m8
+            from: protocol
+            to: agent
+            label: "parsed result"
+            arrow: return
+  - type: message
+    id: m9
+    from: agent
+    to: port
+    label: "{experiment_file, valid, notes}"
+    arrow: return
+  - type: message
+    id: m10
+    from: port
+    to: loop
+    label: "structured result"
+    arrow: return
+  - type: message
+    id: m11
+    from: loop
+    to: evaluator
+    label: "score(experiment_file)"
+    arrow: sync
+  - type: message
+    id: m12
+    from: evaluator
+    to: loop
+    label: "JSON metrics"
+    arrow: return
+  - type: message
+    id: m13
+    from: loop
+    to: store
+    label: "append(record, best_so_far)"
+    arrow: sync
+  - type: message
+    id: m14
+    from: store
+    to: loop
+    label: "ok"
+    arrow: return
+  - type: message
+    id: m15
+    from: loop
+    to: cli
+    label: "done"
+    arrow: return

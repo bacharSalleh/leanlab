@@ -1,0 +1,106 @@
+version: "1.0"
+name: Spec a coding task — draft, approve, lock
+description: >-
+  The spec-writer turns a coding task into a spec + acceptance tests in an isolated
+  worktree, loops on the operator's feedback until approved, then locks the tests.
+realizes:
+  useCase: spec-task
+  slice: draft-and-lock-acceptance
+participants:
+  - id: cli
+    nodeId: leanlab-cli
+  - id: spec
+    nodeId: spec-writer
+  - id: port
+    nodeId: agent-port
+  - id: agent
+    nodeId: claude-agent
+  - id: llm
+    nodeId: claude
+  - id: tests
+    nodeId: acceptance-tests
+steps:
+  - type: note
+    id: n-task
+    position: over
+    participants: [cli, spec]
+    text: "Operator gives a coding task for the lab's target repo."
+  - type: message
+    id: m-spec
+    from: cli
+    to: spec
+    label: "spec(task)"
+    arrow: sync
+    activate: true
+  - type: message
+    id: m-worktree
+    from: spec
+    to: tests
+    label: "create isolated git worktree"
+    arrow: create
+  - type: group
+    id: g-approve-loop
+    kind: loop
+    condition: "until the operator approves"
+    branches:
+      - steps:
+          - type: message
+            id: m-draft
+            from: spec
+            to: port
+            label: "draft / revise spec + acceptance tests"
+            arrow: sync
+          - type: message
+            id: m-draft-agent
+            from: port
+            to: agent
+            label: "run_structured(spec prompt [+ feedback])"
+            arrow: sync
+          - type: message
+            id: m-draft-llm
+            from: agent
+            to: llm
+            label: "claude -p"
+            arrow: sync
+          - type: message
+            id: m-draft-llm-ret
+            from: llm
+            to: agent
+            label: "drafted spec + tests"
+            arrow: return
+          - type: message
+            id: m-draft-ret
+            from: port
+            to: spec
+            label: "spec + tests"
+            arrow: return
+          - type: message
+            id: m-write
+            from: spec
+            to: tests
+            label: "write spec + acceptance tests into the worktree"
+            arrow: sync
+          - type: message
+            id: m-show
+            from: spec
+            to: cli
+            label: "show spec + tests — approve or give feedback?"
+            arrow: sync
+          - type: message
+            id: m-decide
+            from: cli
+            to: spec
+            label: "approve | feedback"
+            arrow: return
+  - type: message
+    id: m-lock
+    from: spec
+    to: tests
+    label: "lock acceptance tests read-only (frozen criteria)"
+    arrow: sync
+  - type: message
+    id: m-done
+    from: spec
+    to: cli
+    label: "locked — ready for the engineer"
+    arrow: return

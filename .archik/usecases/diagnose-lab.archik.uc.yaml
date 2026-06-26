@@ -1,0 +1,38 @@
+version: "1.0"
+id: diagnose-lab
+name: Diagnose and repair a lab
+status: active
+primaryActor: operator
+secondaryActors:
+  - claude
+goal: >-
+  The operator confirms a lab is wired correctly — and repairs any problems — before
+  spending a run, so a mis-wired lab can't silently score everything zero.
+preconditions:
+  - A lab exists with a lab.json.
+flows:
+  basic:
+    steps:
+      - "Operator checks a lab."
+      - "The doctor verifies config, files, the claude CLI, that the agent prompts build, and cheaply probes the evaluator's argument + metric wiring."
+      - "The doctor reports each check as pass / warn / fail."
+  alternates:
+    - id: repair
+      branchFrom: basic.3
+      steps:
+        - "On failures, the operator asks the doctor to fix the lab."
+        - "Claude edits the lab to resolve the failures (and re-locks the evaluator)."
+        - "The doctor re-checks, looping until green or an attempt limit."
+postconditions:
+  - "The operator knows the lab's health, and after a fix the wiring problems are resolved."
+slices:
+  - id: check-wiring
+    description: The doctor verifies the lab is wired correctly, including a cheap probe of the evaluator's arg + metric wiring.
+    flows: [basic]
+    tests: [tests/test_doctor.py]
+    status: active
+  - id: fix-wiring
+    description: Claude repairs the failures the check found and re-checks until green.
+    flows: [basic, repair]
+    tests: [tests/test_doctor.py]
+    status: active

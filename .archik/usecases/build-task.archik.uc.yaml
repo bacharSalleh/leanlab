@@ -1,0 +1,41 @@
+version: "1.0"
+id: build-task
+name: Build a coding task
+status: active
+primaryActor: operator
+secondaryActors:
+  - claude
+goal: >-
+  The operator gets a working change that passes the locked acceptance tests and a
+  reviewer's sign-off, merged into the main branch.
+preconditions:
+  - The task has been spec'd — an isolated worktree holds the spec and locked acceptance tests.
+postconditions:
+  - "A change that passes the gate and the reviewer is committed and merged into the main branch."
+flows:
+  basic:
+    steps:
+      - "Operator starts building a spec'd task."
+      - "The engineer reads the spec and the locked acceptance tests and implements a change in the worktree."
+      - "The gate runs the locked acceptance tests, the project tests, and any lint."
+      - "When the gate passes, the reviewer checks the diff for quality and for gaming the tests."
+      - "If the reviewer approves, the engineer commits and merges the branch into the main branch."
+  alternates:
+    - id: gate-fail
+      branchFrom: basic.3
+      steps:
+        - "The gate fails; the engineer is given the failures and revises, up to an attempt limit."
+        - "The loop returns to basic step 3."
+    - id: review-changes
+      branchFrom: basic.4
+      steps:
+        - "The reviewer rejects the change with specific feedback."
+        - "The engineer revises and the loop returns to basic step 3."
+slices:
+  - id: implement-to-green
+    description: The engineer iterates until the gate passes and the reviewer approves, then the change is merged.
+    flows: [basic, gate-fail, review-changes]
+    tests: [tests/test_coding_engineer.py]
+    status: active
+    realization:
+      seqFile: .archik/build-task.archik.seq.yaml

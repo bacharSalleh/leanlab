@@ -1,0 +1,380 @@
+version: "1.0"
+name: leanlab
+nodes:
+  - id: leanlab-cli
+    kind: service
+    name: leanlab CLI
+    description: The operator's entry point (leanlab.py) — parses init/run/serve/list and launches the loop or dashboard for a lab.
+    seqFiles:
+      - .archik/run-experiments-happy.archik.seq.yaml
+      - .archik/init-lab.archik.seq.yaml
+      - .archik/spec-task.archik.seq.yaml
+      - .archik/build-task.archik.seq.yaml
+    sourcePath: leanlab/cli.py
+    stereotype: boundary
+  - id: framework
+    kind: module
+    name: Core framework
+    description: The domain-agnostic core (core/) — orchestration, the agent abstraction, and the dashboard shared by every lab.
+    sourcePath: leanlab/core
+  - id: loop
+    kind: service
+    name: Experiment loop
+    description: Orchestrates one run — builds the Worker prompt from task+memory+advisor notes, drives the Worker via the agent port, runs the evaluator, ranks and logs records, and wakes the Director and Critic.
+    parentId: framework
+    seqFiles:
+      - .archik/run-experiments-happy.archik.seq.yaml
+      - .archik/run-experiments-fix.archik.seq.yaml
+    sourcePath: leanlab/core/loop.py
+    stereotype: control
+  - id: dashboard
+    kind: service
+    name: Dashboard
+    description: Schema-driven live dashboard (core/monitor.py) — reads results.jsonl and agent transcripts to show the progress chart, results table, and live agent stream.
+    parentId: framework
+    sourcePath: leanlab/core/monitor.py
+  - id: agent-port
+    kind: port
+    name: Agent port
+    description: The Agent abstraction the loop depends on — AgentTransport.send + AgentRunner.run_structured/run_plain. Backend-agnostic (DIP).
+    parentId: framework
+    seqFiles:
+      - .archik/run-experiments-happy.archik.seq.yaml
+      - .archik/run-experiments-fix.archik.seq.yaml
+      - .archik/init-lab.archik.seq.yaml
+      - .archik/spec-task.archik.seq.yaml
+      - .archik/build-task.archik.seq.yaml
+    sourcePath: leanlab/core/agents/port.py
+    stereotype: boundary
+  - id: agent-protocol
+    kind: module
+    name: Structured-output + retry protocol
+    description: StructuredRunner — validates an agent's JSON reply against required keys and re-prompts on malformed output ("reply with ONLY that JSON object") up to a retry limit.
+    parentId: framework
+    seqFiles:
+      - .archik/run-experiments-happy.archik.seq.yaml
+    sourcePath: leanlab/core/agents/protocol.py
+    stereotype: control
+  - id: claude-agent
+    kind: adapter
+    name: Claude Code agent
+    description: AgentTransport that runs a turn via the Claude Code CLI (claude -p --output-format json) and keeps the session for resume-based fixes.
+    parentId: framework
+    seqFiles:
+      - .archik/run-experiments-happy.archik.seq.yaml
+      - .archik/run-experiments-fix.archik.seq.yaml
+      - .archik/init-lab.archik.seq.yaml
+      - .archik/spec-task.archik.seq.yaml
+      - .archik/build-task.archik.seq.yaml
+    sourcePath: leanlab/core/agents/claude.py
+  - id: hermes-agent
+    kind: adapter
+    name: Hermes agent
+    description: Agent adapter for the Hermes agent backend (planned).
+    parentId: framework
+    status: proposed
+  - id: custom-agent
+    kind: adapter
+    name: Custom agent
+    description: Agent adapter slot for a user-supplied custom agent backend (planned).
+    parentId: framework
+    status: proposed
+  - id: lab
+    kind: module
+    name: Lab cartridge
+    description: A lab (labs/house-prices) — task.md, lab.json objective, the frozen evaluator, the validator, and the experiments the Worker writes.
+    sourcePath: .leanlab/house-prices
+  - id: evaluator
+    kind: service
+    name: Frozen evaluator
+    description: The lab's frozen scorer (evaluation.py) — runs one experiment against held-out data and prints a single line of JSON metrics. The Worker never runs it.
+    parentId: lab
+    seqFiles:
+      - .archik/run-experiments-happy.archik.seq.yaml
+      - .archik/run-experiments-fix.archik.seq.yaml
+    sourcePath: .leanlab/house-prices/evaluation.py
+    stereotype: control
+  - id: results-store
+    kind: database
+    name: Results store
+    description: The append-only record book (results.jsonl) — one JSON record per experiment with its metrics and best-so-far flag.
+    parentId: lab
+    seqFiles:
+      - .archik/run-experiments-happy.archik.seq.yaml
+      - .archik/run-experiments-fix.archik.seq.yaml
+    stereotype: entity
+  - id: claude
+    kind: external
+    name: Claude LLM
+    description: The Claude model, invoked through the claude CLI, that powers the Worker, Director, and Critic agent sessions.
+    seqFiles:
+      - .archik/run-experiments-happy.archik.seq.yaml
+      - .archik/run-experiments-fix.archik.seq.yaml
+      - .archik/init-lab.archik.seq.yaml
+      - .archik/spec-task.archik.seq.yaml
+      - .archik/build-task.archik.seq.yaml
+  - id: init-architect
+    kind: service
+    name: Init architect
+    description: "Orchestrates the interactive `leanlab init`: prompts the operator, drafts task.md and the objective and proposes an evaluator via the agent port, writes the lab scaffold, and loops on the operator's eval feedback."
+    parentId: framework
+    seqFiles:
+      - .archik/init-lab.archik.seq.yaml
+    sourcePath: leanlab/core/init.py
+    status: active
+    stereotype: control
+  - id: lab-scaffold
+    kind: database
+    name: Lab scaffold
+    description: The task-defining files a lab needs — task.md, lab.json (objective), validate.py, and evaluation.py — that init creates and the operator edits.
+    parentId: lab
+    seqFiles:
+      - .archik/init-lab.archik.seq.yaml
+    sourcePath: .leanlab/house-prices/lab.json
+    status: active
+    stereotype: entity
+  - id: lab-doctor
+    kind: service
+    name: Lab doctor
+    description: Preflight checks that a lab is wired correctly (config, files, claude CLI, and a cheap probe of the evaluator's arg + metric wiring), and uses Claude to fix problems it finds. Run by `leanlab check`/`fix`, as a `run` preflight, and by init's self-verify.
+    parentId: framework
+    sourcePath: leanlab/core/doctor.py
+    status: active
+    stereotype: control
+  - id: coding
+    kind: module
+    name: Coding lab
+    description: "A lab type for coding tasks on a real repo: spec-writer + engineer + tech-lead/reviewer personas, judged by a tests+quality gate."
+    parentId: framework
+    sourcePath: leanlab/core/coding
+    status: active
+  - id: spec-writer
+    kind: service
+    name: Spec writer
+    description: Turns a coding task into a spec + acceptance tests in an isolated git worktree, loops on the operator's feedback, then locks the tests as the frozen criteria the engineer is judged by.
+    parentId: coding
+    seqFiles:
+      - .archik/spec-task.archik.seq.yaml
+    sourcePath: leanlab/core/coding/spec.py
+    status: active
+    stereotype: control
+  - id: acceptance-tests
+    kind: database
+    name: Acceptance tests
+    description: The approved, locked (read-only) acceptance tests for a task, held in an isolated worktree — the per-task frozen criteria.
+    parentId: coding
+    seqFiles:
+      - .archik/spec-task.archik.seq.yaml
+      - .archik/build-task.archik.seq.yaml
+    status: active
+    stereotype: entity
+  - id: gate-runner
+    kind: service
+    name: Gate runner
+    description: Runs the deterministic pass/fail gate on a task's worktree — the locked acceptance tests, the project test suite, and optional lint/typecheck. Every command must exit 0 for a change to pass.
+    parentId: coding
+    seqFiles:
+      - .archik/build-task.archik.seq.yaml
+    sourcePath: leanlab/core/coding/gate.py
+    status: active
+    stereotype: control
+  - id: engineer
+    kind: service
+    name: Engineer
+    description: Implements a coding task in the worktree, runs the gate, iterates on gate failures and reviewer feedback, then commits and merges the change. Persona template is configurable (coding vs metric set).
+    parentId: coding
+    seqFiles:
+      - .archik/build-task.archik.seq.yaml
+    sourcePath: leanlab/core/coding/engineer.py
+    status: active
+    stereotype: control
+  - id: reviewer
+    kind: service
+    name: Reviewer
+    description: Reviews the engineer's diff for quality and for gaming the locked tests; approves or requests changes. The coding-lab Critic persona.
+    parentId: coding
+    seqFiles:
+      - .archik/build-task.archik.seq.yaml
+    sourcePath: leanlab/core/coding/engineer.py
+    status: active
+    stereotype: control
+  - id: techlead
+    kind: service
+    name: Tech lead
+    description: Maintains the project PLAYBOOK after a successful merge — conventions, architecture, pitfalls — so the next task starts smarter. Coding-lab Director persona.
+    parentId: coding
+    seqFiles:
+      - .archik/build-task.archik.seq.yaml
+    sourcePath: leanlab/core/coding/playbook.py
+    status: active
+    stereotype: control
+  - id: playbook
+    kind: database
+    name: Playbook
+    description: The project's accumulated knowledge (.leanlab/PLAYBOOK.md) the engineer reads each task and the tech-lead rewrites — the coding lab's memory.
+    parentId: coding
+    seqFiles:
+      - .archik/build-task.archik.seq.yaml
+    status: active
+    stereotype: entity
+  - id: coding-board
+    kind: service
+    name: Coding board
+    description: Live dashboard for a coding lab — task cards with gate status (spec'd / merged / failed), attempts, and the PLAYBOOK. Reads .leanlab/worktrees, coding-results.jsonl, and PLAYBOOK.md.
+    parentId: coding
+    sourcePath: leanlab/core/coding/board.py
+    status: active
+  - id: coding-board-ui
+    kind: frontend
+    name: Coding board UI
+    description: React + Tailwind single-page app for the coding board — renders the loop, the sortable task table, the round-by-round timeline and the agent chat from the board's /api/state, /api/task and /api/stream (SSE) endpoints. Built into the wheel.
+    sourcePath: frontend/src
+    status: active
+    stereotype: boundary
+edges:
+  - id: cli-invokes-loop
+    from: leanlab-cli
+    to: loop
+    relationship: invokes
+  - id: loop-invokes-evaluator
+    from: loop
+    to: evaluator
+    relationship: invokes
+  - id: loop-writes-results
+    from: loop
+    to: results-store
+    relationship: writes
+  - id: loop-reads-results
+    from: loop
+    to: results-store
+    relationship: reads
+  - id: loop-reads-lab
+    from: loop
+    to: lab
+    relationship: reads
+  - id: loop-uses-agent-port
+    from: loop
+    to: agent-port
+    relationship: uses
+  - id: claude-agent-implements-port
+    from: claude-agent
+    to: agent-port
+    relationship: implements
+  - id: hermes-agent-implements-port
+    from: hermes-agent
+    to: agent-port
+    relationship: implements
+    status: proposed
+  - id: custom-agent-implements-port
+    from: custom-agent
+    to: agent-port
+    relationship: implements
+    status: proposed
+  - id: claude-agent-uses-protocol
+    from: claude-agent
+    to: agent-protocol
+    relationship: uses
+  - id: claude-agent-invokes-claude
+    from: claude-agent
+    to: claude
+    relationship: invokes
+  - id: cli-invokes-init
+    from: leanlab-cli
+    to: init-architect
+    relationship: invokes
+  - id: init-uses-agentport
+    from: init-architect
+    to: agent-port
+    relationship: uses
+  - id: init-writes-scaffold
+    from: init-architect
+    to: lab-scaffold
+    relationship: writes
+  - id: cli-invokes-doctor
+    from: leanlab-cli
+    to: lab-doctor
+    relationship: invokes
+  - id: doctor-reads-scaffold
+    from: lab-doctor
+    to: lab-scaffold
+    relationship: reads
+  - id: doctor-uses-agentport
+    from: lab-doctor
+    to: agent-port
+    relationship: uses
+  - id: init-uses-doctor
+    from: init-architect
+    to: lab-doctor
+    relationship: uses
+  - id: cli-invokes-specwriter
+    from: leanlab-cli
+    to: spec-writer
+    relationship: invokes
+  - id: specwriter-uses-agentport
+    from: spec-writer
+    to: agent-port
+    relationship: uses
+  - id: specwriter-writes-acceptance
+    from: spec-writer
+    to: acceptance-tests
+    relationship: writes
+  - id: cli-invokes-gate
+    from: leanlab-cli
+    to: gate-runner
+    relationship: invokes
+  - id: gate-reads-acceptance
+    from: gate-runner
+    to: acceptance-tests
+    relationship: reads
+  - id: cli-invokes-engineer
+    from: leanlab-cli
+    to: engineer
+    relationship: invokes
+  - id: engineer-uses-agentport
+    from: engineer
+    to: agent-port
+    relationship: uses
+  - id: engineer-uses-gate
+    from: engineer
+    to: gate-runner
+    relationship: uses
+  - id: engineer-reads-acceptance
+    from: engineer
+    to: acceptance-tests
+    relationship: reads
+  - id: engineer-uses-reviewer
+    from: engineer
+    to: reviewer
+    relationship: uses
+  - id: reviewer-uses-agentport
+    from: reviewer
+    to: agent-port
+    relationship: uses
+  - id: engineer-reads-playbook
+    from: engineer
+    to: playbook
+    relationship: reads
+  - id: engineer-uses-techlead
+    from: engineer
+    to: techlead
+    relationship: uses
+  - id: techlead-writes-playbook
+    from: techlead
+    to: playbook
+    relationship: writes
+  - id: techlead-uses-agentport
+    from: techlead
+    to: agent-port
+    relationship: uses
+  - id: cli-invokes-board
+    from: leanlab-cli
+    to: coding-board
+    relationship: invokes
+  - id: board-reads-playbook
+    from: coding-board
+    to: playbook
+    relationship: reads
+  - id: board-ui-uses-board
+    from: coding-board-ui
+    to: coding-board
+    relationship: uses

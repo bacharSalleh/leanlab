@@ -1,0 +1,52 @@
+version: 2
+updates:
+  # Python dependencies (pyproject / uv)
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies
+
+  # Board UI dependencies (React + Vite + Tailwind)
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies
+    groups:
+      vite-ecosystem:
+        patterns: ["vite", "@vitejs/*"]
+      react-ecosystem:
+        patterns: ["react", "react-dom"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies
+      - github-actions

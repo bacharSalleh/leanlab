@@ -1,0 +1,46 @@
+version: "1.0"
+id: run-experiments
+name: Run experiments
+status: active
+primaryActor: operator
+secondaryActors: [claude]
+goal: The operator runs N experiments on a lab and walks away with scored, ranked records that evolve toward the lab's objective.
+preconditions:
+  - The lab exists with a task.md, a frozen evaluation.py evaluator, and lab.json declaring the objective.
+flows:
+  basic:
+    steps:
+      - Operator starts a run for a lab (leanlab run <lab> --n N).
+      - Loop builds the Worker prompt from the task, the memory of best experiments, and the Director and Critic notes.
+      - Loop launches a Worker (Claude) session; the Worker writes one experiment file and validates it until it passes.
+      - Worker returns the experiment file name as JSON.
+      - Loop runs the frozen evaluator on the file and reads its one line of JSON metrics.
+      - Loop appends a record to results.jsonl, flagging it best-so-far by the objective.
+      - Every few loops the Loop wakes the Director and the Critic to steer the next experiments.
+  alternates:
+    - id: evaluator-error
+      branchFrom: basic.5
+      steps:
+        - The evaluator fails to produce metrics because the experiment errors.
+        - Loop resumes the same Worker session with the error text and asks it to fix the file.
+        - Loop re-runs the evaluator; after max_fix_calls failures it logs the experiment as invalid and moves on.
+slices:
+  - id: rank-by-objective
+    description: The loop ranks experiments by the lab's objective (min or max of the metric) and tracks best-so-far plus the memory shown to the next Worker.
+    flows: [basic]
+    status: active
+    tests: [tests/test_core.py]
+  - id: score-and-log
+    description: A valid experiment is scored by the frozen evaluator and exactly one record is appended to results.jsonl.
+    flows: [basic]
+    status: active
+    tests: [tests/test_run_experiments_happy.py]
+    realization:
+      seqFile: .archik/run-experiments-happy.archik.seq.yaml
+  - id: fix-on-error
+    description: When the evaluator errors, the Worker is resumed to fix the file up to max_fix_calls, otherwise the record is logged as invalid.
+    flows: [basic, evaluator-error]
+    status: active
+    tests: [tests/test_run_experiments_fix.py]
+    realization:
+      seqFile: .archik/run-experiments-fix.archik.seq.yaml

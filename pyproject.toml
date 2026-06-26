@@ -1,0 +1,62 @@
+[project]
+name = "leanlab"
+version = "0.2.1"
+description = "A self-improving lab for AI agents — evolve ML experiments against a frozen metric, or ship coding tasks through a spec → gate → review → merge loop with locked acceptance tests."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Bashar", email = "welcomebachar@gmail.com" }]
+keywords = ["llm", "claude", "agents", "coding-agent", "evaluation", "self-improving", "cli", "experiment", "lab"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
+# CLI UX only — the engine logic stays dependency-free; ML libs belong to the lab.
+dependencies = [
+    "rich>=13",
+    "questionary>=2",
+]
+
+[project.urls]
+Homepage = "https://github.com/bacharSalleh/leanlab"
+Repository = "https://github.com/bacharSalleh/leanlab"
+Issues = "https://github.com/bacharSalleh/leanlab/issues"
+Changelog = "https://github.com/bacharSalleh/leanlab/blob/main/CHANGELOG.md"
+
+[project.scripts]
+leanlab = "leanlab.cli:main"
+
+[dependency-groups]
+# Tooling + the deps the bundled example lab (house-prices) needs to run under tests.
+# leanlab itself has no third-party runtime deps — ML libs belong to the *lab*, not the tool.
+dev = [
+    "pytest>=8.0",
+    "scikit-learn>=1.4",
+    "numpy>=1.26",
+    "lightgbm>=4.6.0",
+    "catboost>=1.2.10",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# The board UI is built from frontend/ into this dir; ship it in BOTH the sdist and the
+# wheel even though it's VCS-ignored. Top-level so `uv build` (sdist → wheel) keeps it.
+[tool.hatch.build]
+artifacts = ["leanlab/core/coding/board_dist/**"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["leanlab"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

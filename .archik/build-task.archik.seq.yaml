@@ -1,0 +1,190 @@
+version: "1.0"
+name: Build a coding task — implement to green, prove honest, review, merge
+description: >-
+  The engineer loop: implement in the worktree, run the gate, prove the change is honest
+  (locked tests untouched + pass without the engineer's own fixtures), then an adversarial
+  reviewer panel checks the diff. It loops on gate failures, gaming, or review feedback —
+  up to max-attempts — then merges and the tech-lead refreshes the playbook.
+realizes:
+  useCase: build-task
+  slice: implement-to-green
+participants:
+  - id: cli
+    nodeId: leanlab-cli
+  - id: eng
+    nodeId: engineer
+  - id: port
+    nodeId: agent-port
+  - id: agent
+    nodeId: claude-agent
+  - id: llm
+    nodeId: claude
+  - id: gate
+    nodeId: gate-runner
+  - id: tests
+    nodeId: acceptance-tests
+  - id: rev
+    nodeId: reviewer
+  - id: tl
+    nodeId: techlead
+  - id: pb
+    nodeId: playbook
+steps:
+  - type: note
+    id: n-start
+    position: over
+    participants: [cli, eng]
+    text: "Operator builds a spec'd task — the worktree already holds the locked acceptance tests."
+  - type: message
+    id: m-build
+    from: cli
+    to: eng
+    label: "build(task, max-attempts, reviewers)"
+    arrow: sync
+    activate: true
+  - type: message
+    id: m-read-pb
+    from: eng
+    to: pb
+    label: "read PLAYBOOK (injected into the engineer prompt)"
+    arrow: sync
+  - type: group
+    id: g-loop
+    kind: loop
+    condition: "each round, until merged or max-attempts reached"
+    branches:
+      - steps:
+          - type: message
+            id: m-impl
+            from: eng
+            to: port
+            label: "implement / revise the change (read spec + locked tests)"
+            arrow: sync
+          - type: message
+            id: m-impl-agent
+            from: port
+            to: agent
+            label: "run_plain(engineer prompt [+ feedback])"
+            arrow: sync
+          - type: message
+            id: m-impl-llm
+            from: agent
+            to: llm
+            label: "claude -p (edits files in the worktree)"
+            arrow: sync
+          - type: message
+            id: m-impl-ret
+            from: port
+            to: eng
+            label: "change made"
+            arrow: return
+          - type: message
+            id: m-gate
+            from: eng
+            to: gate
+            label: "restore pristine tests, then run the gate"
+            arrow: sync
+          - type: message
+            id: m-gate-tests
+            from: gate
+            to: tests
+            label: "run locked acceptance + project tests"
+            arrow: sync
+          - type: message
+            id: m-gate-ret
+            from: gate
+            to: eng
+            label: "pass | fail"
+            arrow: return
+          - type: group
+            id: g-passed
+            kind: alt
+            condition: "gate passed"
+            branches:
+              - label: "[gate green]"
+                steps:
+                  - type: message
+                    id: m-honest
+                    from: eng
+                    to: gate
+                    label: "honesty checks: tests untouched? pass w/o engineer fixtures?"
+                    arrow: sync
+                  - type: message
+                    id: m-honest-tests
+                    from: gate
+                    to: tests
+                    label: "isolated acceptance run (pytest --noconftest)"
+                    arrow: sync
+                  - type: message
+                    id: m-honest-ret
+                    from: gate
+                    to: eng
+                    label: "honest | tampered / gamed"
+                    arrow: return
+                  - type: group
+                    id: g-honest
+                    kind: alt
+                    condition: "change is honest"
+                    branches:
+                      - label: "[honest]"
+                        steps:
+                          - type: note
+                            id: n-panel
+                            position: over
+                            participants: [rev]
+                            text: "Adversarial panel: N reviewers, distinct lenses; merge only if ALL approve."
+                          - type: group
+                            id: g-panel
+                            kind: loop
+                            condition: "for each reviewer lens (correctness / spec / security / robustness)"
+                            branches:
+                              - steps:
+                                  - type: message
+                                    id: m-review-call
+                                    from: rev
+                                    to: port
+                                    label: "run_structured(review prompt + lens)"
+                                    arrow: sync
+                                  - type: message
+                                    id: m-review-llm
+                                    from: port
+                                    to: agent
+                                    label: "claude -p (fresh, independent session)"
+                                    arrow: sync
+                          - type: message
+                            id: m-review-ret
+                            from: rev
+                            to: eng
+                            label: "quorum: all approved | changes requested"
+                            arrow: return
+                      - label: "[tampered / gamed]"
+                        steps:
+                          - type: note
+                            id: n-reject
+                            position: over
+                            participants: [eng]
+                            text: "Reject the attempt, feed the reason back, loop."
+  - type: message
+    id: m-merge
+    from: eng
+    to: eng
+    label: "commit + merge branch into main"
+    arrow: sync
+  - type: message
+    id: m-refresh
+    from: eng
+    to: tl
+    label: "refresh the playbook"
+    arrow: sync
+  - type: message
+    id: m-write-pb
+    from: tl
+    to: pb
+    label: "rewrite PLAYBOOK.md from recent changes"
+    arrow: sync
+  - type: message
+    id: m-done
+    from: eng
+    to: cli
+    label: "merged — task complete"
+    arrow: return

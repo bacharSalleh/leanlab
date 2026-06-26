@@ -1,0 +1,24 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.DS_Store
+results.csv.bak
+
+# archik per-machine runtime state
+.archik/runtime.json
+
+# frontend build (board UI) — compiled on demand, shipped via hatch artifacts
+frontend/node_modules/
+leanlab/core/coding/board_dist/
+
+# python build artifacts
+dist/
+build/
+*.egg-info/
+
+# editors
+.idea/
+
+# lab runtime artifacts (regenerated when the example lab runs)
+**/catboost_info/

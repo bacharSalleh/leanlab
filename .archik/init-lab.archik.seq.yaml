@@ -1,0 +1,143 @@
+version: "1.0"
+name: Initialise a lab — interactive init
+description: >-
+  leanlab init drafts a lab with Claude: the operator describes the task, the
+  architect drafts task.md + objective, then proposes an evaluator in a loop until
+  the operator approves.
+realizes:
+  useCase: init-lab
+  slice: approve-eval-loop
+participants:
+  - id: cli
+    nodeId: leanlab-cli
+  - id: arch
+    nodeId: init-architect
+  - id: port
+    nodeId: agent-port
+  - id: agent
+    nodeId: claude-agent
+  - id: llm
+    nodeId: claude
+  - id: scaffold
+    nodeId: lab-scaffold
+steps:
+  - type: note
+    id: n-trigger
+    position: over
+    participants: [cli, arch]
+    text: "Operator runs `leanlab init <name>` and describes the task in plain words."
+  - type: message
+    id: m-init
+    from: cli
+    to: arch
+    label: "init(name, description)"
+    arrow: sync
+    activate: true
+  - type: message
+    id: m-skeleton
+    from: arch
+    to: scaffold
+    label: "create .leanlab/<name>/ skeleton"
+    arrow: create
+  - type: message
+    id: m-draft-call
+    from: arch
+    to: port
+    label: "draft task.md + objective from the description"
+    arrow: sync
+  - type: message
+    id: m-draft-agent
+    from: port
+    to: agent
+    label: "run_structured(architect prompt)"
+    arrow: sync
+  - type: message
+    id: m-draft-llm
+    from: agent
+    to: llm
+    label: "claude -p"
+    arrow: sync
+  - type: message
+    id: m-draft-llm-ret
+    from: llm
+    to: agent
+    label: "drafted task + objective"
+    arrow: return
+  - type: message
+    id: m-draft-agent-ret
+    from: agent
+    to: port
+    label: "result"
+    arrow: return
+  - type: message
+    id: m-draft-ret
+    from: port
+    to: arch
+    label: "task + objective"
+    arrow: return
+  - type: message
+    id: m-write-task
+    from: arch
+    to: scaffold
+    label: "write task.md + lab.json (objective)"
+    arrow: sync
+  - type: group
+    id: g-approve-loop
+    kind: loop
+    condition: "until the operator approves"
+    branches:
+      - steps:
+          - type: message
+            id: m-propose-call
+            from: arch
+            to: port
+            label: "propose / revise the evaluation"
+            arrow: sync
+          - type: message
+            id: m-propose-agent
+            from: port
+            to: agent
+            label: "run_structured(eval prompt [+ feedback])"
+            arrow: sync
+          - type: message
+            id: m-propose-llm
+            from: agent
+            to: llm
+            label: "claude -p"
+            arrow: sync
+          - type: message
+            id: m-propose-llm-ret
+            from: llm
+            to: agent
+            label: "proposed evaluator"
+            arrow: return
+          - type: message
+            id: m-propose-ret
+            from: port
+            to: arch
+            label: "evaluation proposal"
+            arrow: return
+          - type: message
+            id: m-show
+            from: arch
+            to: cli
+            label: "show proposal — approve or give feedback?"
+            arrow: sync
+          - type: message
+            id: m-decide
+            from: cli
+            to: arch
+            label: "approve | feedback"
+            arrow: return
+  - type: message
+    id: m-write-eval
+    from: arch
+    to: scaffold
+    label: "write evaluation.py + validate.py"
+    arrow: sync
+  - type: message
+    id: m-done
+    from: arch
+    to: cli
+    label: "lab ready — review, lock, run"
+    arrow: return

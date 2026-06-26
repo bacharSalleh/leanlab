@@ -1,0 +1,28 @@
+version: "1.0"
+id: watch-progress
+name: Watch a lab's progress
+status: active
+primaryActor: operator
+goal: >-
+  The operator watches a lab evolve live — scores, sessions, and notes — without touching
+  the run, so they can see how it is going and when to step in.
+preconditions:
+  - A lab exists (an experiment lab, or a coding lab with task worktrees).
+flows:
+  basic:
+    steps:
+      - "Operator starts the dashboard for a lab."
+      - "The dashboard reads the lab's live state (results or tasks, plus the agents' notes)."
+      - "The dashboard shows the state — summary chips, progress, and the live agent activity."
+      - "The view refreshes as the lab changes."
+slices:
+  - id: metric-dashboard
+    description: For an experiment lab — stat chips, the progress chart, the results table, and the live agent stream.
+    flows: [basic]
+    tests: [tests/test_monitor.py]
+    status: active
+  - id: coding-board
+    description: For a coding lab — task cards with gate status (spec'd / merged / failed) and the PLAYBOOK.
+    flows: [basic]
+    tests: [tests/test_coding_board.py]
+    status: active
