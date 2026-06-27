@@ -1,7 +1,7 @@
 {
   "name": "leanlab-board",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
   "description": "React + Tailwind UI for the leanlab coding board (built into the Python wheel).",
   "scripts": {

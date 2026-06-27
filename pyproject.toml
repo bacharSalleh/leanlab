@@ -1,6 +1,6 @@
 [project]
 name = "leanlab"
-version = "0.2.3"
+version = "0.2.4"
 description = "A self-improving lab for AI agents — evolve ML experiments against a frozen metric, or ship coding tasks through a spec → gate → review → merge loop with locked acceptance tests."
 readme = "README.md"
 requires-python = ">=3.11"

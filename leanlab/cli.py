@@ -29,7 +29,7 @@ def _version() -> str:
         from importlib.metadata import PackageNotFoundError, version
         return version("leanlab")
     except (ImportError, PackageNotFoundError):
-        return "0.2.3"
+        return "0.2.4"
 
 
 def labs_dir() -> Path:

@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-06-27
+
 ### Changed
 - Finished the OOP/DI migration: removed all module-level delegating shims
   (`spec_task`, `build_task`, `run_gate`, `coding_state`, `read_events`,
@@ -76,7 +78,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   evaluator) and coding labs (spec-writer → engineer → gate → reviewer →
   tech-lead), a live dashboard, and a Claude Code skill (`leanlab init --for-agent`).
 
-[Unreleased]: https://github.com/bacharSalleh/leanlab/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/bacharSalleh/leanlab/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/bacharSalleh/leanlab/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/bacharSalleh/leanlab/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/bacharSalleh/leanlab/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/bacharSalleh/leanlab/compare/v0.2.0...v0.2.1
