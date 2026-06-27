@@ -267,19 +267,19 @@ def rec_run_fix():
     with tempfile.TemporaryDirectory() as tmp:
         lab, cfg, (exp,) = _metric_lab(tmp, [("idea_01.py", 0.33)])
         calls = {"n": 0}
-        orig = loop.evaluate
+        orig = loop.Evaluator.evaluate
 
-        def flaky(lab_dir, c, rel):
+        def flaky(self, rel):
             calls["n"] += 1
             return (None, "ValueError: NaN in predictions") if calls["n"] == 1 else ({"rmse": 0.33}, "ok")
 
-        loop.evaluate = flaky
+        loop.Evaluator.evaluate = flaky
         try:
             loop.score_with_fixes(lab, cfg, "idea", exp, "sess-1", StructuredRunner(
                 FakeTransport(['{"experiment_file": "experiments/idea_01.py", "valid": true}'])))
             row = loop.read_results(lab, cfg)[0]
         finally:
-            loop.evaluate = orig
+            loop.Evaluator.evaluate = orig
     return write_trace("run-experiments", "fix-on-error", [
         {"id": "m1", "from": "loop", "to": "evaluator", "label": "score(experiment_file)", "status": "error",
          "data": {"in": {"experiment_file": "experiments/idea_01.py"}, "out": "ValueError: NaN in predictions"}},

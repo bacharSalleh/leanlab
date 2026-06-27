@@ -2,7 +2,7 @@
   "version": "1.0",
   "useCase": "diagnose-lab",
   "slice": "check-wiring",
-  "recordedAt": "2026-06-26T18:42:23.259444+00:00",
+  "recordedAt": "2026-06-27T11:45:02.849580+00:00",
   "steps": [
     {
       "from": "developer",

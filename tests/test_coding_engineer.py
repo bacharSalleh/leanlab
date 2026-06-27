@@ -202,7 +202,7 @@ def test_persona_resolver():
 def test_isolation_passes_self_contained(tmp_path):
     from leanlab.core.coding import engineer
     (tmp_path / "test_acc.py").write_text("def test_x():\n    assert 1 + 1 == 2\n")
-    ok, _ = engineer._isolated_acceptance(
+    ok, _ = engineer.Engineer._isolated_acceptance(
         tmp_path, {"tests": [{"path": "test_acc.py"}]}, f"{sys.executable} -m pytest --noconftest -q")
     assert ok is True
 
@@ -212,17 +212,17 @@ def test_isolation_catches_conftest_dependence(tmp_path):
     # passes normally (conftest provides the fixture), but fails with conftest disabled
     (tmp_path / "test_acc.py").write_text("def test_x(secret):\n    assert secret == 42\n")
     (tmp_path / "conftest.py").write_text("import pytest\n@pytest.fixture\ndef secret():\n    return 42\n")
-    ok, _ = engineer._isolated_acceptance(
+    ok, _ = engineer.Engineer._isolated_acceptance(
         tmp_path, {"tests": [{"path": "test_acc.py"}]}, f"{sys.executable} -m pytest --noconftest -q")
     assert ok is False
 
 
 def test_clip_diff_marks_truncation():
-    from leanlab.core.coding.engineer import _clip_diff, _DIFF_LIMIT
-    assert _clip_diff("abc") == "abc"                       # short diffs untouched
-    out = _clip_diff("x" * (_DIFF_LIMIT + 500))
+    from leanlab.core.coding.engineer import ReviewPanel
+    assert ReviewPanel._clip_diff("abc") == "abc"          # short diffs untouched
+    out = ReviewPanel._clip_diff("x" * (ReviewPanel.DIFF_LIMIT + 500))
     assert "truncated" in out and "do NOT approve" in out
-    assert len(out) < _DIFF_LIMIT + 500                     # the tail was dropped
+    assert len(out) < ReviewPanel.DIFF_LIMIT + 500         # the tail was dropped
 
 
 class PanelRunner:
@@ -236,10 +236,10 @@ class PanelRunner:
 
 
 def test_panel_rejects_if_any_reviewer_rejects():
-    from leanlab.core.coding.engineer import _review_panel, _lenses_for
+    from leanlab.core.coding.engineer import ReviewPanel
     r = PanelRunner([{"approved": True, "score": 90, "feedback": ""},
                      {"approved": False, "score": 40, "feedback": "SQL injection in query()"}])
-    approved, score, fb, verdicts = _review_panel(r, "spec", "diff", "coding", _lenses_for(2))
+    approved, score, fb, verdicts = ReviewPanel(r, "coding", 2).review("spec", "diff")
     assert approved is False
     assert score == 40                                          # harshest score governs
     assert "SQL injection" in fb and "[spec-conformance]" in fb  # blocker labelled by its lens
@@ -247,17 +247,17 @@ def test_panel_rejects_if_any_reviewer_rejects():
 
 
 def test_panel_approves_only_when_all_approve():
-    from leanlab.core.coding.engineer import _review_panel, _lenses_for
+    from leanlab.core.coding.engineer import ReviewPanel
     r = PanelRunner([{"approved": True, "score": 90, "feedback": ""},
                      {"approved": True, "score": 80, "feedback": ""}])
-    approved, score, fb, _v = _review_panel(r, "spec", "diff", "coding", _lenses_for(2))
+    approved, score, fb, _v = ReviewPanel(r, "coding", 2).review("spec", "diff")
     assert approved is True and score == 80 and fb == ""
 
 
 def test_lenses_distinct_then_general():
-    from leanlab.core.coding.engineer import _lenses_for
-    assert _lenses_for(1) == [None]                         # single = general reviewer
-    names = [lens["name"] for lens in _lenses_for(3)]
+    from leanlab.core.coding.engineer import ReviewPanel
+    assert ReviewPanel(None, "coding", 1)._lenses() == [None]   # single = general reviewer
+    names = [lens["name"] for lens in ReviewPanel(None, "coding", 3)._lenses()]
     assert names == ["correctness", "spec-conformance", "security"]
 
 

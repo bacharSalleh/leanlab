@@ -14,10 +14,19 @@ PERSONAS = {
 }
 
 
+class Personas:
+    """A persona set; resolves a role to its prompt template text (shipped as package data)."""
+
+    def __init__(self, persona_set: str = "coding"):
+        self._set = persona_set
+
+    def text(self, role: str) -> str:
+        try:
+            fname = PERSONAS[self._set][role]
+        except KeyError as e:
+            raise KeyError(f"no persona '{role}' in set '{self._set}'") from e
+        return (resources.files("leanlab") / "templates" / "agents" / fname).read_text().strip()
+
+
 def spec_text(role: str, persona_set: str = "coding") -> str:
-    """Load the template text for a role in a persona set (shipped as package data)."""
-    try:
-        fname = PERSONAS[persona_set][role]
-    except KeyError as e:
-        raise KeyError(f"no persona '{role}' in set '{persona_set}'") from e
-    return (resources.files("leanlab") / "templates" / "agents" / fname).read_text().strip()
+    return Personas(persona_set).text(role)
