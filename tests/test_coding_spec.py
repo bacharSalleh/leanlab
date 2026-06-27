@@ -14,7 +14,7 @@ from leanlab.core.agents.port import AgentTransport
 
 
 def test_slug_is_readable_and_word_bounded():
-    s = spec._slug
+    s = spec.SpecWriter.slug
     # drops filler, first sentence only, no mid-word cut, no trailing dash
     assert s("Add a configurable CORS allowlist. Add logging too.") == "add-configurable-cors-allowlist"
     assert s("Add a /health endpoint returning 200") == "add-health-endpoint-returning-200"
@@ -24,7 +24,7 @@ def test_slug_is_readable_and_word_bounded():
 
 
 def test_slug_is_stable():
-    assert spec._slug("Harden the histogram") == spec._slug("harden the histogram!")
+    assert spec.SpecWriter.slug("Harden the histogram") == spec.SpecWriter.slug("harden the histogram!")
 
 
 class FakeTransport(AgentTransport):
