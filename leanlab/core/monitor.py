@@ -7,7 +7,8 @@ Schema-driven: it reads the lab's lab.json (the objective) and results.jsonl
   - LIVE STREAM: the running agent's messages, tool calls, timings, and cost.
   - SESSIONS: each agent run (worker / director / critic) with its cost.
 
-Run:
+`Dashboard` builds the state (the testable core); the HTTP handler is a thin shell
+over a single `Dashboard` instance. Run:
     uv run python core/monitor.py --lab labs/house-prices
 """
 
@@ -22,258 +23,266 @@ import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 RUNNING_WINDOW = 15
 PRICES = {"opus": (15.0, 75.0, 1.50), "sonnet": (3.0, 15.0, 0.30),
           "haiku": (0.80, 4.0, 0.08), "fable": (15.0, 75.0, 1.50)}
 _DEFAULT_PRICE = (15.0, 75.0, 1.50)
 
-LAB = None  # set in main()
 
+class Dashboard:
+    """Builds the live monitor state for one metric lab: results, sessions, and the agent stream."""
 
-def cfg():
-    return json.loads((LAB / "lab.json").read_text())
+    _EXP_RE = re.compile(r"experiments/[A-Za-z0-9_]+\.py")
 
+    def __init__(self, lab):
+        self._lab = Path(lab)
+        self._meta = {}   # session_meta cache, keyed by transcript path
 
-def objective():
-    o = cfg().get("objective", {})
-    return o.get("metric", "score"), o.get("direction", "max")
+    # --- lab config ---------------------------------------------------------
+    def cfg(self):
+        return json.loads((self._lab / "lab.json").read_text())
 
+    def objective(self):
+        o = self.cfg().get("objective", {})
+        return o.get("metric", "score"), o.get("direction", "max")
 
-# --- pricing / timestamps ---------------------------------------------------
-def _price_for(model):
-    name = (model or "").lower()
-    for k, r in PRICES.items():
-        if k in name:
-            return r
-    return _DEFAULT_PRICE
+    # --- pricing / timestamps (pure helpers) --------------------------------
+    @staticmethod
+    def _price_for(model):
+        name = (model or "").lower()
+        for k, r in PRICES.items():
+            if k in name:
+                return r
+        return _DEFAULT_PRICE
 
+    @staticmethod
+    def _turn_cost(model, u):
+        i, o, cr = Dashboard._price_for(model)
+        return (((u.get("input_tokens") or 0) * i + (u.get("output_tokens") or 0) * o
+                 + (u.get("cache_read_input_tokens") or 0) * cr
+                 + (u.get("cache_creation_input_tokens") or 0) * i * 1.25) / 1e6)
 
-def _turn_cost(model, u):
-    i, o, cr = _price_for(model)
-    return (((u.get("input_tokens") or 0) * i + (u.get("output_tokens") or 0) * o
-             + (u.get("cache_read_input_tokens") or 0) * cr
-             + (u.get("cache_creation_input_tokens") or 0) * i * 1.25) / 1e6)
-
-
-def _parse_ts(ts):
-    if not ts:
-        return None
-    try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
-    except ValueError:
-        return None
-
-
-def _clip(t, limit=200000):
-    if t is None:
-        return ""
-    t = str(t)
-    return t if len(t) <= limit else t[:limit] + " …(clipped)"
-
-
-def _stringify(v):
-    if isinstance(v, str):
-        return v
-    try:
-        return json.dumps(v, ensure_ascii=False)
-    except (TypeError, ValueError):
-        return str(v)
-
-
-# --- transcripts ------------------------------------------------------------
-def transcript_dir():
-    base = Path.home() / ".claude" / "projects"
-    exact = base / str(LAB).replace("/", "-")
-    if exact.is_dir():
-        return exact
-    matches = sorted(base.glob(f"*{LAB.name}*"))
-    return matches[-1] if matches else exact
-
-
-_EXP_RE = re.compile(r"experiments/[A-Za-z0-9_]+\.py")
-
-
-def parse_session(path):
-    events, first_user, artifact, pending = [], None, None, {}
-    try:
-        lines = path.read_text(errors="replace").splitlines()
-    except OSError:
-        return {"role": "unknown", "artifact": None}, []
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
+    @staticmethod
+    def _parse_ts(ts):
+        if not ts:
+            return None
         try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        kind, msg = obj.get("type"), obj.get("message") or {}
-        ts = obj.get("timestamp")
-        ts_s = _parse_ts(ts)
-        if kind == "user":
-            content = msg.get("content")
-            if isinstance(content, str):
-                if first_user is None:
-                    first_user = content
-                events.append({"kind": "user", "text": _clip(content), "ts": ts})
-            elif isinstance(content, list):
-                for b in content:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _clip(t, limit=200000):
+        if t is None:
+            return ""
+        t = str(t)
+        return t if len(t) <= limit else t[:limit] + " …(clipped)"
+
+    @staticmethod
+    def _stringify(v):
+        if isinstance(v, str):
+            return v
+        try:
+            return json.dumps(v, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return str(v)
+
+    # --- transcripts --------------------------------------------------------
+    def transcript_dir(self):
+        base = Path.home() / ".claude" / "projects"
+        exact = base / str(self._lab).replace("/", "-")
+        if exact.is_dir():
+            return exact
+        matches = sorted(base.glob(f"*{self._lab.name}*"))
+        return matches[-1] if matches else exact
+
+    @staticmethod
+    def parse_session(path):
+        events, first_user, artifact, pending = [], None, None, {}
+        try:
+            lines = path.read_text(errors="replace").splitlines()
+        except OSError:
+            return {"role": "unknown", "artifact": None}, []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            kind, msg = obj.get("type"), obj.get("message") or {}
+            ts = obj.get("timestamp")
+            ts_s = Dashboard._parse_ts(ts)
+            if kind == "user":
+                content = msg.get("content")
+                if isinstance(content, str):
+                    if first_user is None:
+                        first_user = content
+                    events.append({"kind": "user", "text": Dashboard._clip(content), "ts": ts})
+                elif isinstance(content, list):
+                    for b in content:
+                        if not isinstance(b, dict):
+                            continue
+                        if b.get("type") == "tool_result":
+                            dur = None
+                            start = pending.pop(b.get("tool_use_id"), None)
+                            if start is not None and ts_s is not None:
+                                dur = round(ts_s - start, 2)
+                            events.append({"kind": "result", "ts": ts, "dur": dur,
+                                           "text": Dashboard._clip(Dashboard._stringify(b.get("content")))})
+                        elif b.get("type") == "text":
+                            if first_user is None:
+                                first_user = b.get("text", "")
+                            events.append({"kind": "user", "text": Dashboard._clip(b.get("text", "")), "ts": ts})
+            elif kind == "assistant":
+                u = msg.get("usage") or {}
+                turn = {"model": msg.get("model"), "in_tok": u.get("input_tokens"),
+                        "out_tok": u.get("output_tokens"),
+                        "cache_tok": u.get("cache_read_input_tokens"),
+                        "cost": round(Dashboard._turn_cost(msg.get("model"), u), 6) if u else None}
+                firstb = True
+                for b in msg.get("content") or []:
                     if not isinstance(b, dict):
                         continue
-                    if b.get("type") == "tool_result":
-                        dur = None
-                        start = pending.pop(b.get("tool_use_id"), None)
-                        if start is not None and ts_s is not None:
-                            dur = round(ts_s - start, 2)
-                        events.append({"kind": "result", "ts": ts, "dur": dur,
-                                       "text": _clip(_stringify(b.get("content")))})
-                    elif b.get("type") == "text":
-                        if first_user is None:
-                            first_user = b.get("text", "")
-                        events.append({"kind": "user", "text": _clip(b.get("text", "")), "ts": ts})
-        elif kind == "assistant":
-            u = msg.get("usage") or {}
-            turn = {"model": msg.get("model"), "in_tok": u.get("input_tokens"),
-                    "out_tok": u.get("output_tokens"),
-                    "cache_tok": u.get("cache_read_input_tokens"),
-                    "cost": round(_turn_cost(msg.get("model"), u), 6) if u else None}
-            firstb = True
-            for b in msg.get("content") or []:
-                if not isinstance(b, dict):
-                    continue
-                if b.get("type") == "text" and b.get("text", "").strip():
-                    ev = {"kind": "text", "text": _clip(b["text"]), "ts": ts}
-                    if firstb:
-                        ev.update(turn); firstb = False
-                    events.append(ev)
-                elif b.get("type") == "tool_use":
-                    raw = _stringify(b.get("input"))
-                    m = _EXP_RE.search(raw)
-                    if m and "sample.py" not in m.group(0):
-                        artifact = m.group(0)
-                    if ts_s is not None and b.get("id"):
-                        pending[b["id"]] = ts_s
-                    ev = {"kind": "tool", "name": b.get("name", "tool"), "text": _clip(raw), "ts": ts}
-                    if firstb:
-                        ev.update(turn); firstb = False
-                    events.append(ev)
-    role = "unknown"
-    if first_user:
-        head = first_user.strip().splitlines()[0].lower()
-        # New prompts start "You are the WORKER/DIRECTOR/CRITIC ..."; the older markers
-        # ("read director.md", etc.) are kept so historical transcripts still classify.
-        if head.startswith("you are the director") or head.startswith("read director.md"):
-            role = "director"
-        elif head.startswith("you are the critic") or head.startswith("read critic.md"):
-            role = "critic"
-        elif (head.startswith("you are the worker") or head.startswith("read claude.md")
-              or "exactly one experiment" in head):
-            role = "worker"
-    return {"role": role, "artifact": artifact}, events
+                    if b.get("type") == "text" and b.get("text", "").strip():
+                        ev = {"kind": "text", "text": Dashboard._clip(b["text"]), "ts": ts}
+                        if firstb:
+                            ev.update(turn); firstb = False
+                        events.append(ev)
+                    elif b.get("type") == "tool_use":
+                        raw = Dashboard._stringify(b.get("input"))
+                        m = Dashboard._EXP_RE.search(raw)
+                        if m and "sample.py" not in m.group(0):
+                            artifact = m.group(0)
+                        if ts_s is not None and b.get("id"):
+                            pending[b["id"]] = ts_s
+                        ev = {"kind": "tool", "name": b.get("name", "tool"), "text": Dashboard._clip(raw), "ts": ts}
+                        if firstb:
+                            ev.update(turn); firstb = False
+                        events.append(ev)
+        role = "unknown"
+        if first_user:
+            head = first_user.strip().splitlines()[0].lower()
+            # New prompts start "You are the WORKER/DIRECTOR/CRITIC ..."; the older markers
+            # ("read director.md", etc.) are kept so historical transcripts still classify.
+            if head.startswith("you are the director") or head.startswith("read director.md"):
+                role = "director"
+            elif head.startswith("you are the critic") or head.startswith("read critic.md"):
+                role = "critic"
+            elif (head.startswith("you are the worker") or head.startswith("read claude.md")
+                  or "exactly one experiment" in head):
+                role = "worker"
+        return {"role": role, "artifact": artifact}, events
 
+    def session_meta(self, path):
+        mt = path.stat().st_mtime
+        c = self._meta.get(str(path))
+        if c and c[0] == mt:
+            return c[1]
+        meta, events = self.parse_session(path)
+        info = {"role": meta["role"], "artifact": meta["artifact"], "events": len(events),
+                "cost": round(sum(e.get("cost") or 0 for e in events), 4)}
+        self._meta[str(path)] = (mt, info)
+        return info
 
-_META = {}
+    def list_sessions(self):
+        out, now = [], time.time()
+        for p in sorted(self.transcript_dir().glob("*.jsonl"),
+                        key=lambda x: x.stat().st_mtime, reverse=True):
+            info = self.session_meta(p)
+            mt = p.stat().st_mtime
+            out.append({"id": p.stem, **info, "mtime": mt, "running": (now - mt) < RUNNING_WINDOW})
+        return out
 
+    # --- results ------------------------------------------------------------
+    def read_results(self):
+        path = self._lab / self.cfg().get("results_file", "results.jsonl")
+        if not path.exists():
+            return []
+        out = []
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    out.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        return out
 
-def session_meta(path):
-    mt = path.stat().st_mtime
-    c = _META.get(str(path))
-    if c and c[0] == mt:
-        return c[1]
-    meta, events = parse_session(path)
-    info = {"role": meta["role"], "artifact": meta["artifact"], "events": len(events),
-            "cost": round(sum(e.get("cost") or 0 for e in events), 4)}
-    _META[str(path)] = (mt, info)
-    return info
-
-
-def list_sessions():
-    out, now = [], time.time()
-    for p in sorted(transcript_dir().glob("*.jsonl"), key=lambda x: x.stat().st_mtime, reverse=True):
-        info = session_meta(p)
-        mt = p.stat().st_mtime
-        out.append({"id": p.stem, **info, "mtime": mt, "running": (now - mt) < RUNNING_WINDOW})
-    return out
-
-
-# --- results ----------------------------------------------------------------
-def read_results():
-    path = LAB / cfg().get("results_file", "results.jsonl")
-    if not path.exists():
-        return []
-    out = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if line:
+    def best_value(self, rows):
+        metric, d = self.objective()
+        vals = []
+        for r in rows:
             try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
+                vals.append(float(r.get(metric)))
+            except (TypeError, ValueError):
                 pass
-    return out
+        if not vals:
+            return None
+        return min(vals) if d == "min" else max(vals)
 
-
-def best_value(rows):
-    metric, d = objective()
-    vals = []
-    for r in rows:
+    @staticmethod
+    def latest_value(rows, metric):
+        """The metric of the most recent (last) experiment, or None if unparseable."""
+        if not rows:
+            return None
         try:
-            vals.append(float(r.get(metric)))
+            return float(rows[-1].get(metric))
         except (TypeError, ValueError):
-            pass
-    if not vals:
-        return None
-    return min(vals) if d == "min" else max(vals)
+            return None
+
+    @staticmethod
+    def total_cost(sessions):
+        """Sum the cost across every agent session (worker / director / critic)."""
+        return round(sum(s.get("cost") or 0 for s in sessions), 4)
+
+    def build_state(self):
+        sessions = self.list_sessions()
+        active = next((s["id"] for s in sessions if s["running"]), None) or (sessions[0]["id"] if sessions else None)
+        rows = self.read_results()
+        metric, d = self.objective()
+        return {
+            "lab": self.cfg().get("name", self._lab.name),
+            "metric": metric, "direction": d,
+            "results": rows, "best": self.best_value(rows),
+            "latest": self.latest_value(rows, metric), "total_cost": self.total_cost(sessions),
+            "sessions": sessions, "active": active,
+            "directions": (self._lab / "Director_Notes.md").read_text() if (self._lab / "Director_Notes.md").exists() else "",
+            "critique": (self._lab / "Critic_Feedback.md").read_text() if (self._lab / "Critic_Feedback.md").exists() else "",
+            "now": time.time(),
+        }
+
+    def session_payload(self, sid):
+        path = self.transcript_dir() / f"{sid}.jsonl"
+        if not path.exists():
+            return {"id": sid, "meta": {}, "events": [], "totals": {}}
+        meta, events = self.parse_session(path)
+        tot = {"in": 0, "out": 0, "cost": 0.0, "turns": 0, "model": None}
+        for e in events:
+            if e.get("cost") is not None:
+                tot["in"] += e.get("in_tok") or 0; tot["out"] += e.get("out_tok") or 0
+                tot["cost"] += e.get("cost") or 0; tot["turns"] += 1
+                if e.get("model"):
+                    tot["model"] = e["model"]
+        tot["cost"] = round(tot["cost"], 4)
+        return {"id": sid, "meta": meta, "events": events, "totals": tot,
+                "running": (time.time() - path.stat().st_mtime) < RUNNING_WINDOW}
+
+
+# --- module shims (kept for the tests) --------------------------------------
+def parse_session(path):
+    return Dashboard.parse_session(path)
 
 
 def latest_value(rows, metric):
-    """The metric of the most recent (last) experiment, or None if unparseable."""
-    if not rows:
-        return None
-    try:
-        return float(rows[-1].get(metric))
-    except (TypeError, ValueError):
-        return None
+    return Dashboard.latest_value(rows, metric)
 
 
 def total_cost(sessions):
-    """Sum the cost across every agent session (worker / director / critic)."""
-    return round(sum(s.get("cost") or 0 for s in sessions), 4)
-
-
-def build_state():
-    sessions = list_sessions()
-    active = next((s["id"] for s in sessions if s["running"]), None) or (sessions[0]["id"] if sessions else None)
-    rows = read_results()
-    metric, d = objective()
-    return {
-        "lab": cfg().get("name", LAB.name),
-        "metric": metric, "direction": d,
-        "results": rows, "best": best_value(rows),
-        "latest": latest_value(rows, metric), "total_cost": total_cost(sessions),
-        "sessions": sessions, "active": active,
-        "directions": (LAB / "Director_Notes.md").read_text() if (LAB / "Director_Notes.md").exists() else "",
-        "critique": (LAB / "Critic_Feedback.md").read_text() if (LAB / "Critic_Feedback.md").exists() else "",
-        "now": time.time(),
-    }
-
-
-def session_payload(sid):
-    path = transcript_dir() / f"{sid}.jsonl"
-    if not path.exists():
-        return {"id": sid, "meta": {}, "events": [], "totals": {}}
-    meta, events = parse_session(path)
-    tot = {"in": 0, "out": 0, "cost": 0.0, "turns": 0, "model": None}
-    for e in events:
-        if e.get("cost") is not None:
-            tot["in"] += e.get("in_tok") or 0; tot["out"] += e.get("out_tok") or 0
-            tot["cost"] += e.get("cost") or 0; tot["turns"] += 1
-            if e.get("model"):
-                tot["model"] = e["model"]
-    tot["cost"] = round(tot["cost"], 4)
-    return {"id": sid, "meta": meta, "events": events, "totals": tot,
-            "running": (time.time() - path.stat().st_mtime) < RUNNING_WINDOW}
+    return Dashboard.total_cost(sessions)
 
 
 PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
@@ -446,6 +455,9 @@ applyFolds();setInterval(renderSessions,20000);connect();
 </script></body></html>"""
 
 
+_DASH = None  # the Dashboard, set in main()
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -476,17 +488,17 @@ class Handler(BaseHTTPRequestHandler):
         last_ping = 0.0
         try:
             while True:
-                st = build_state()
+                st = _DASH.build_state()
                 sig = (tuple((s["id"], round(s["mtime"], 2), s["running"]) for s in st["sessions"]),
                        st["active"], st["best"], hash(st["directions"]), hash(st["critique"]),
                        len(st["results"]))
                 if sig != last_sig:
                     self._sse("state", json.dumps(st)); last_sig = sig
                 if sid:
-                    p = transcript_dir() / f"{sid}.jsonl"
+                    p = _DASH.transcript_dir() / f"{sid}.jsonl"
                     mt = p.stat().st_mtime if p.exists() else None
                     if mt != last_mt:
-                        self._sse("session", json.dumps(session_payload(sid))); last_mt = mt
+                        self._sse("session", json.dumps(_DASH.session_payload(sid))); last_mt = mt
                 if time.time() - last_ping > 15:
                     self.wfile.write(b": ping\n\n"); self.wfile.flush(); last_ping = time.time()
                 time.sleep(1)
@@ -501,9 +513,9 @@ class Handler(BaseHTTPRequestHandler):
             elif route.path == "/api/stream":
                 self.stream(parse_qs(route.query).get("id", [""])[0])
             elif route.path == "/api/state":
-                self._send(json.dumps(build_state()))
+                self._send(json.dumps(_DASH.build_state()))
             elif route.path == "/api/session":
-                self._send(json.dumps(session_payload(parse_qs(route.query).get("id", [""])[0])))
+                self._send(json.dumps(_DASH.session_payload(parse_qs(route.query).get("id", [""])[0])))
             else:
                 self.send_error(404)
         except (BrokenPipeError, ConnectionResetError):
@@ -529,18 +541,19 @@ class QuietServer(ThreadingHTTPServer):
 
 
 def main():
-    global LAB
+    global _DASH
     p = argparse.ArgumentParser(description="leanlab dashboard")
     p.add_argument("--lab", required=True)
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--no-open", action="store_true")
     args = p.parse_args()
-    LAB = Path(args.lab).resolve()
-    if not (LAB / "lab.json").exists():
-        print(f"ERROR: no lab.json in {LAB}", file=sys.stderr)
+    lab = Path(args.lab).resolve()
+    if not (lab / "lab.json").exists():
+        print(f"ERROR: no lab.json in {lab}", file=sys.stderr)
         sys.exit(1)
+    _DASH = Dashboard(lab)
     url = f"http://127.0.0.1:{args.port}"
-    print(f"leanlab monitor: {url}  (lab: {LAB.name})")
+    print(f"leanlab monitor: {url}  (lab: {lab.name})")
     if not args.no_open:
         webbrowser.open(url)
     try:

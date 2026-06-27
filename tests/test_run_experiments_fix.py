@@ -34,13 +34,13 @@ def test_fix_retries_then_logs(tmp_path, monkeypatch):
     cfg, exp = _lab(tmp_path)
     calls = {"n": 0}
 
-    def fake_eval(lab_dir, cfg, rel):
+    def fake_eval(self, rel):
         calls["n"] += 1
         if calls["n"] == 1:
             return None, "boom"          # judge errors first
         return {"rmse": 0.4}, "ok"       # then succeeds after the fix
 
-    monkeypatch.setattr(loop, "evaluate", fake_eval)
+    monkeypatch.setattr(loop.Evaluator, "evaluate", fake_eval)
     runner = StructuredRunner(FakeTransport())
     loop.score_with_fixes(tmp_path, cfg, "t", exp, "sess-1", runner)
 
@@ -51,7 +51,7 @@ def test_fix_retries_then_logs(tmp_path, monkeypatch):
 
 def test_fix_exhausts_marks_invalid(tmp_path, monkeypatch):
     cfg, exp = _lab(tmp_path)
-    monkeypatch.setattr(loop, "evaluate", lambda *a: (None, "boom"))  # always fails
+    monkeypatch.setattr(loop.Evaluator, "evaluate", lambda self, rel: (None, "boom"))  # always fails
     runner = StructuredRunner(FakeTransport())
     loop.score_with_fixes(tmp_path, cfg, "t", exp, "sess-1", runner)
 
