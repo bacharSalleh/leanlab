@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Finished the OOP/DI migration: removed all module-level delegating shims
+  (`spec_task`, `build_task`, `run_gate`, `coding_state`, `read_events`,
+  `load_lab`, `score_with_fixes`, `check_lab`, `run_init`, `parse_session`, …).
+  Tests and the trace recorder now construct the classes directly, so `cli.py`
+  is the sole composition root and there is one obvious way to call each unit.
+  Behaviour is unchanged. Kept genuine helpers (`make_runner` factory, `report`
+  renderer, `ok`/`summarize` predicates, `clean_worktrees`, `serve_board`).
+
 ## [0.2.3] - 2026-06-27
 
 ### Changed
