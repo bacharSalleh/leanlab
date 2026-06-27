@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .events import EventLog
-from .playbook import read_playbook
+from .playbook import Playbook
 from .transcripts import Transcripts
 
 _STATUS = {"merged": "#3fb950", "failed": "#f85149", "spec'd": "#d29922", "building": "#58a6ff"}
@@ -62,109 +62,117 @@ def _task_usage(repo, slug):
     return _transcripts(repo).usage(slug)
 
 
-# --- state builders ---------------------------------------------------------
-def _results(repo):
-    p = Path(repo) / ".leanlab" / "coding-results.jsonl"
-    latest = {}
-    if p.exists():
-        for line in p.read_text().splitlines():
-            line = line.strip()
-            if line:
-                try:
-                    r = json.loads(line)
-                    latest[r["slug"]] = r
-                except (ValueError, KeyError):
-                    pass
-    return latest
+# --- state (the Board) ------------------------------------------------------
+class Board:
+    """Builds the coding lab's dashboard state from worktrees, results, events, and transcripts."""
 
+    def __init__(self, repo):
+        self._repo = Path(repo)
+        self._events = EventLog(repo)
+        self._transcripts = _transcripts(repo)
+        self._playbook = Playbook(repo)
 
-def _spec_summary(d):
-    spec = (d / "SPEC.md").read_text() if (d / "SPEC.md").exists() else ""
-    lines = [ln.strip() for ln in spec.splitlines() if ln.strip()]
-    return next((ln for ln in lines if not ln.startswith("#")), lines[0] if lines else "(no spec)")
+    def _results(self):
+        p = self._repo / ".leanlab" / "coding-results.jsonl"
+        latest = {}
+        if p.exists():
+            for line in p.read_text().splitlines():
+                line = line.strip()
+                if line:
+                    try:
+                        r = json.loads(line)
+                        latest[r["slug"]] = r
+                    except (ValueError, KeyError):
+                        pass
+        return latest
 
+    @staticmethod
+    def _spec_summary(d):
+        spec = (d / "SPEC.md").read_text() if (d / "SPEC.md").exists() else ""
+        lines = [ln.strip() for ln in spec.splitlines() if ln.strip()]
+        return next((ln for ln in lines if not ln.startswith("#")), lines[0] if lines else "(no spec)")
 
-def _task_slugs(repo):
-    """Every task we know about — live worktrees PLUS finished ones recorded in results/events.
+    def _slugs(self):
+        """Live worktrees PLUS finished tasks recorded in results/events (worktrees get cleaned)."""
+        wtroot = self._repo / ".leanlab" / "worktrees"
+        live = [d.name for d in sorted(wtroot.iterdir()) if d.is_dir()] if wtroot.is_dir() else []
+        durable = [*self._results()] + [f.stem for f in sorted((self._repo / ".leanlab" / "events").glob("*.jsonl"))]
+        seen, archived = set(live), []
+        for slug in durable:
+            if slug not in seen:
+                seen.add(slug)
+                archived.append(slug)
+        return live, archived
 
-    A task's worktree is removed once it merges and is cleaned, so the worktree dir alone
-    forgets completed work. Union the durable records so the board keeps the full history.
-    """
-    repo = Path(repo)
-    wtroot = repo / ".leanlab" / "worktrees"
-    live = [d.name for d in sorted(wtroot.iterdir()) if d.is_dir()] if wtroot.is_dir() else []
-    durable = [*_results(repo)] + [f.stem for f in sorted((repo / ".leanlab" / "events").glob("*.jsonl"))]
-    seen = set(live)
-    archived = []
-    for slug in durable:
-        if slug not in seen:
-            seen.add(slug)
-            archived.append(slug)
-    return live, archived
+    def _status(self, slug, by_slug=None):
+        """A task's status: the result row wins; otherwise inferred from the event log."""
+        by_slug = self._results() if by_slug is None else by_slug
+        r = by_slug.get(slug)
+        if r:
+            return "merged" if r.get("merged") else "failed"
+        evs = self._events.read(slug)
+        if any(e.get("event") == "merged" and e.get("merged") for e in evs):
+            return "merged"
+        if any(e.get("event") == "gaveup" for e in evs):
+            return "failed"
+        return "spec'd"
 
+    def state(self):
+        by_slug = self._results()
+        wtroot = self._repo / ".leanlab" / "worktrees"
+        live, archived = self._slugs()
+        tasks = []
+        for slug in live + archived:
+            d = wtroot / slug
+            is_live = d.is_dir()
+            r = by_slug.get(slug)
+            status = self._status(slug, by_slug)
+            attempts = (r or {}).get("attempts")
+            if attempts is None:                    # recover the count from the event log
+                n = sum(1 for e in self._events.read(slug) if e.get("event") == "attempt")
+                attempts = n or None
+            spec = self._spec_summary(d) if is_live else (
+                "merged — worktree cleaned" if status == "merged" else "worktree cleaned")
+            u = self._transcripts.usage(slug)
+            tasks.append({"slug": slug, "status": status, "branch": f"leanlab/{slug}",
+                          "attempts": attempts, "spec": spec, "archived": not is_live,
+                          "tokens": u["tokens"], "cost": u["cost"]})
+        merged = sum(t["status"] == "merged" for t in tasks)
+        failed = sum(t["status"] == "failed" for t in tasks)
+        decided = merged + failed
+        totals = {"tasks": len(tasks), "merged": merged, "failed": failed,
+                  "open": sum(t["status"] == "spec'd" for t in tasks),
+                  "tokens": sum(t["tokens"] for t in tasks),
+                  "cost": round(sum(t["cost"] for t in tasks), 4),
+                  "success": round(100 * merged / decided) if decided else None}
+        return {"tasks": tasks, "playbook": self._playbook.read(), "totals": totals}
 
-def _task_status(repo, slug, by_slug=None):
-    """A task's status: the result row wins; otherwise inferred from the event log."""
-    by_slug = _results(repo) if by_slug is None else by_slug
-    r = by_slug.get(slug)
-    if r:
-        return "merged" if r.get("merged") else "failed"
-    evs = read_events(repo, slug)
-    if any(e.get("event") == "merged" and e.get("merged") for e in evs):
-        return "merged"
-    if any(e.get("event") == "gaveup" for e in evs):
-        return "failed"
-    return "spec'd"
+    def task(self, slug):
+        wt = self._repo / ".leanlab" / "worktrees" / slug
+        u = self._transcripts.usage(slug)
+        return {"slug": slug, "exists": wt.is_dir(), "status": self._status(slug),
+                "spec": self._spec_summary(wt) if wt.is_dir() else "",
+                "timeline": self._events.read(slug), "stream": self._transcripts.events(slug),
+                "cost": u["cost"], "tokens": u["tokens"]}
+
+    def overview(self):
+        return {"lab": self._repo.resolve().name, **self.state()}
 
 
 def coding_state(repo) -> dict:
-    repo = Path(repo)
-    by_slug = _results(repo)
-    wtroot = repo / ".leanlab" / "worktrees"
-    live, archived = _task_slugs(repo)
-    tasks = []
-    for slug in live + archived:
-        d = wtroot / slug
-        is_live = d.is_dir()
-        r = by_slug.get(slug)
-        status = _task_status(repo, slug, by_slug)
-        attempts = (r or {}).get("attempts")
-        if attempts is None:                    # recover the count from the event log
-            n = sum(1 for e in read_events(repo, slug) if e.get("event") == "attempt")
-            attempts = n or None
-        if is_live:
-            spec = _spec_summary(d)
-        else:
-            spec = "merged — worktree cleaned" if status == "merged" else "worktree cleaned"
-        u = _task_usage(repo, slug)
-        tasks.append({"slug": slug, "status": status, "branch": f"leanlab/{slug}",
-                      "attempts": attempts, "spec": spec, "archived": not is_live,
-                      "tokens": u["tokens"], "cost": u["cost"]})
-    merged = sum(t["status"] == "merged" for t in tasks)
-    failed = sum(t["status"] == "failed" for t in tasks)
-    decided = merged + failed
-    totals = {"tasks": len(tasks), "merged": merged, "failed": failed,
-              "open": sum(t["status"] == "spec'd" for t in tasks),
-              "tokens": sum(t["tokens"] for t in tasks),
-              "cost": round(sum(t["cost"] for t in tasks), 4),
-              "success": round(100 * merged / decided) if decided else None}
-    return {"tasks": tasks, "playbook": read_playbook(repo), "totals": totals}
+    return Board(repo).state()
 
 
 def task_detail(repo, slug) -> dict:
-    repo = Path(repo)
-    wt = repo / ".leanlab" / "worktrees" / slug
-    usage = _task_usage(repo, slug)                  # tokens + cost across all the task's sessions
-    return {"slug": slug, "exists": wt.is_dir(), "status": _task_status(repo, slug),
-            "spec": _spec_summary(wt) if wt.is_dir() else "",
-            "timeline": read_events(repo, slug), "stream": _task_transcript_events(repo, slug),
-            "cost": usage["cost"], "tokens": usage["tokens"]}
+    return Board(repo).task(slug)
 
 
-
-# --- live SPA (SSE) ---------------------------------------------------------
 def overview_state(repo) -> dict:
-    return {"lab": Path(repo).resolve().name, **coding_state(repo)}
+    return Board(repo).overview()
+
+
+def _task_status(repo, slug, by_slug=None):
+    return Board(repo)._status(slug, by_slug)
 
 
 _DIST = Path(__file__).resolve().parent / "board_dist"   # built React app (see frontend/)
