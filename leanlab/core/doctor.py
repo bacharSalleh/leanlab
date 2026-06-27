@@ -121,10 +121,10 @@ class LabDoctor:
         # Actually build the worker/director/critic prompts for this lab — the real wiring test
         # (injects the specs and reads the lab's memory + Director/Critic notes).
         try:
-            from .loop import build_critic_prompt, build_director_prompt, build_worker_prompt
-            build_worker_prompt(lab, cfg)
-            build_director_prompt()
-            build_critic_prompt()
+            from .loop import Lab, Prompts
+            Prompts(Lab(lab, cfg)).worker()
+            Prompts.director()
+            Prompts.critic()
             checks.append(Check("agent prompts", OK, "worker / director / critic prompts build"))
         except Exception as e:  # noqa: BLE001
             checks.append(Check("agent prompts", FAIL, f"cannot build agent prompts: {e}"))
@@ -222,12 +222,3 @@ class RichReport:
 
     def note(self, message):
         self.console.print(message)
-
-
-# --- module shims (kept for the CLI and the tests) --------------------------
-def check_lab(lab_dir) -> list[Check]:
-    return LabDoctor(lab_dir).check()
-
-
-def fix_lab(lab_dir, *, runner=None, ui=None, rounds=3) -> bool:
-    return LabDoctor(lab_dir).fix(runner=runner, ui=ui, rounds=rounds)

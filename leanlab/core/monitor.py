@@ -272,19 +272,6 @@ class Dashboard:
                 "running": (time.time() - path.stat().st_mtime) < RUNNING_WINDOW}
 
 
-# --- module shims (kept for the tests) --------------------------------------
-def parse_session(path):
-    return Dashboard.parse_session(path)
-
-
-def latest_value(rows, metric):
-    return Dashboard.latest_value(rows, metric)
-
-
-def total_cost(sessions):
-    return Dashboard.total_cost(sessions)
-
-
 PAGE = r"""<!doctype html><html><head><meta charset="utf-8">
 <title>leanlab · monitor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>

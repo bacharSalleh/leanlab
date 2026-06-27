@@ -2,7 +2,7 @@
   "version": "1.0",
   "useCase": "spec-task",
   "slice": "draft-and-lock-acceptance",
-  "recordedAt": "2026-06-27T11:45:02.755779+00:00",
+  "recordedAt": "2026-06-27T14:20:58.407417+00:00",
   "seqFile": ".archik/spec-task.archik.seq.yaml",
   "steps": [
     {

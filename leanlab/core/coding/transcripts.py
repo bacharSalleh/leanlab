@@ -33,8 +33,8 @@ class Transcripts:
         cached = self._cache.get(str(d))
         if cached and cached[0] == sig:
             return cached[1]
-        from ..monitor import parse_session            # reuse the metric dashboard's parser
-        parsed = [(p, parse_session(p)[1])
+        from ..monitor import Dashboard                # reuse the metric dashboard's parser
+        parsed = [(p, Dashboard.parse_session(p)[1])
                   for p in sorted(sessions, key=lambda p: p.stat().st_mtime)]
         self._cache[str(d)] = (sig, parsed)
         return parsed

@@ -5,6 +5,8 @@ import json
 import pytest
 
 from leanlab.core.coding import board
+from leanlab.core.coding.board import Board
+from leanlab.core.coding.events import EventLog
 
 
 @pytest.fixture(autouse=True)
@@ -32,7 +34,7 @@ def _setup(tmp_path):
 
 
 def test_coding_state(tmp_path):
-    st = board.coding_state(_setup(tmp_path))
+    st = Board(_setup(tmp_path)).state()
     by = {t["slug"]: t for t in st["tasks"]}
     assert by["add-health"]["status"] == "merged" and by["add-health"]["attempts"] == 2
     assert by["fix-bug"]["status"] == "failed"
@@ -46,14 +48,14 @@ def test_coding_state(tmp_path):
 
 
 def test_overview_state(tmp_path):
-    st = board.overview_state(_setup(tmp_path))
+    st = Board(_setup(tmp_path)).overview()
     assert st["lab"] == tmp_path.name
     assert {t["slug"] for t in st["tasks"]} == {"add-health", "add-auth", "fix-bug"}
     assert st["totals"]["merged"] == 1
 
 
 def test_empty_state(tmp_path):
-    st = board.coding_state(tmp_path)                    # no .leanlab at all
+    st = Board(tmp_path).state()                    # no .leanlab at all
     assert st["totals"]["tasks"] == 0
 
 
@@ -62,7 +64,7 @@ def test_archived_task_shows_after_worktree_removed(tmp_path):
     base = tmp_path / ".leanlab"
     base.mkdir()
     (base / "coding-results.jsonl").write_text(json.dumps({"slug": "done", "merged": True, "attempts": 2}) + "\n")
-    st = board.coding_state(tmp_path)                    # note: no worktrees/ dir at all
+    st = Board(tmp_path).state()                    # note: no worktrees/ dir at all
     by = {t["slug"]: t for t in st["tasks"]}
     assert by["done"]["status"] == "merged" and by["done"]["archived"] is True
     assert by["done"]["attempts"] == 2 and st["totals"]["merged"] == 1
@@ -73,24 +75,24 @@ def test_task_status_helper(tmp_path):
     base.mkdir()
     (base / "coding-results.jsonl").write_text(
         json.dumps({"slug": "m", "merged": True}) + "\n" + json.dumps({"slug": "f", "merged": False}) + "\n")
-    assert board._task_status(tmp_path, "m") == "merged"          # result row wins
-    assert board._task_status(tmp_path, "f") == "failed"
-    board.log_event(tmp_path, "g", {"event": "gaveup", "attempts": 5})
-    assert board._task_status(tmp_path, "g") == "failed"          # inferred from events
-    assert board._task_status(tmp_path, "unknown") == "spec'd"
+    assert Board(tmp_path)._status("m") == "merged"          # result row wins
+    assert Board(tmp_path)._status("f") == "failed"
+    EventLog(tmp_path).log("g", {"event": "gaveup", "attempts": 5})
+    assert Board(tmp_path)._status("g") == "failed"          # inferred from events
+    assert Board(tmp_path)._status("unknown") == "spec'd"
 
 
 def test_task_detail_reports_status(tmp_path):
     (tmp_path / ".leanlab" / "worktrees" / "demo").mkdir(parents=True)
-    board.log_event(tmp_path, "demo", {"event": "merged", "merged": True})
-    assert board.task_detail(tmp_path, "demo")["status"] == "merged"
+    EventLog(tmp_path).log("demo", {"event": "merged", "merged": True})
+    assert Board(tmp_path).task("demo")["status"] == "merged"
 
 
 def test_archived_status_inferred_from_events(tmp_path):
     # a task with only an event log (no result row) gets its status + attempts from events
-    board.log_event(tmp_path, "ev", {"event": "attempt", "n": 1, "gate_passed": False, "failures": ["tests"]})
-    board.log_event(tmp_path, "ev", {"event": "gaveup", "attempts": 5})
-    by = {t["slug"]: t for t in board.coding_state(tmp_path)["tasks"]}
+    EventLog(tmp_path).log("ev", {"event": "attempt", "n": 1, "gate_passed": False, "failures": ["tests"]})
+    EventLog(tmp_path).log("ev", {"event": "gaveup", "attempts": 5})
+    by = {t["slug"]: t for t in Board(tmp_path).state()["tasks"]}
     assert by["ev"]["status"] == "failed"               # derived from the gaveup event
     assert by["ev"]["attempts"] == 1 and by["ev"]["archived"] is True
 
@@ -112,9 +114,9 @@ def test_asset_serves_built_index(tmp_path):
 
 
 def test_log_and_read_events(tmp_path):
-    board.log_event(tmp_path, "demo", {"event": "attempt", "n": 1, "gate_passed": False, "failures": ["tests"]})
-    board.log_event(tmp_path, "demo", {"event": "merged", "branch": "leanlab/demo"})
-    evs = board.read_events(tmp_path, "demo")
+    EventLog(tmp_path).log("demo", {"event": "attempt", "n": 1, "gate_passed": False, "failures": ["tests"]})
+    EventLog(tmp_path).log("demo", {"event": "merged", "branch": "leanlab/demo"})
+    evs = EventLog(tmp_path).read("demo")
     assert [e["event"] for e in evs] == ["attempt", "merged"]
     assert evs[0]["ts"]                                  # timestamp stamped on
 
@@ -123,12 +125,12 @@ def test_task_detail_timeline_and_render(tmp_path):
     wt = tmp_path / ".leanlab" / "worktrees" / "demo"
     wt.mkdir(parents=True)
     (wt / "SPEC.md").write_text("# Spec\n\nAdd a /health endpoint.")
-    board.log_event(tmp_path, "demo", {"event": "spec", "tests": ["tests/t.py"]})
-    board.log_event(tmp_path, "demo", {"event": "attempt", "n": 1, "gate_passed": True, "failures": []})
-    board.log_event(tmp_path, "demo", {"event": "review", "n": 1, "approved": True, "score": 88, "feedback": "clean"})
-    board.log_event(tmp_path, "demo", {"event": "merged", "branch": "leanlab/demo", "merged": True})
+    EventLog(tmp_path).log("demo", {"event": "spec", "tests": ["tests/t.py"]})
+    EventLog(tmp_path).log("demo", {"event": "attempt", "n": 1, "gate_passed": True, "failures": []})
+    EventLog(tmp_path).log("demo", {"event": "review", "n": 1, "approved": True, "score": 88, "feedback": "clean"})
+    EventLog(tmp_path).log("demo", {"event": "merged", "branch": "leanlab/demo", "merged": True})
 
-    d = board.task_detail(tmp_path, "demo")
+    d = Board(tmp_path).task("demo")
     assert d["slug"] == "demo" and d["exists"] is True
     assert [e["event"] for e in d["timeline"]] == ["spec", "attempt", "review", "merged"]
     assert isinstance(d["stream"], list)                # no transcripts in a tmp dir

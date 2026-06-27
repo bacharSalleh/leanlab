@@ -7,7 +7,7 @@ Uses a fake transport + a fake UI — no real Claude, no real terminal.
 import contextlib
 import json
 
-from leanlab.core import init
+from leanlab.core.init import InitArchitect, LabScaffold
 from leanlab.core.agents import StructuredRunner
 from leanlab.core.agents.port import AgentTransport
 
@@ -56,18 +56,16 @@ def _prop(summary="Hold out 20%, score RMSE."):
 
 def test_draft_writes_task_and_objective(tmp_path):
     lab = tmp_path / ".leanlab" / "demo"
-    init.run_init(lab, "demo", "predict house prices",
-                  runner=StructuredRunner(FakeTransport([DRAFT, _prop()])),
-                  ui=FakeUI([("approve", None)]), verify=False)
+    InitArchitect(runner=StructuredRunner(FakeTransport([DRAFT, _prop()])),
+                  ui=FakeUI([("approve", None)])).init(lab, "demo", "predict house prices", verify=False)
     assert (lab / "task.md").read_text().startswith("# Task")
     assert json.loads((lab / "lab.json").read_text())["objective"] == {"metric": "rmse", "direction": "min"}
 
 
 def test_approve_writes_evaluator(tmp_path):
     lab = tmp_path / ".leanlab" / "demo"
-    init.run_init(lab, "demo", "predict",
-                  runner=StructuredRunner(FakeTransport([DRAFT, _prop()])),
-                  ui=FakeUI([("approve", None)]), verify=False)
+    InitArchitect(runner=StructuredRunner(FakeTransport([DRAFT, _prop()])),
+                  ui=FakeUI([("approve", None)])).init(lab, "demo", "predict", verify=False)
     assert "rmse" in (lab / "evaluation.py").read_text()
     assert "VALID" in (lab / "validate.py").read_text()
 
@@ -75,8 +73,9 @@ def test_approve_writes_evaluator(tmp_path):
 def test_feedback_then_approve_loops(tmp_path):
     lab = tmp_path / ".leanlab" / "demo"
     t = FakeTransport([DRAFT, _prop("v1"), _prop("v2")])
-    init.run_init(lab, "demo", "predict", runner=StructuredRunner(t),
-                  ui=FakeUI([("feedback", "use a proper train/test split"), ("approve", None)]), verify=False)
+    InitArchitect(runner=StructuredRunner(t),
+                  ui=FakeUI([("feedback", "use a proper train/test split"), ("approve", None)])).init(
+                      lab, "demo", "predict", verify=False)
     assert (lab / "evaluation.py").exists()
     assert len(t.prompts) == 3                       # draft + 2 proposals
     assert "use a proper train/test split" in t.prompts[2]   # feedback fed into the re-propose
@@ -84,16 +83,15 @@ def test_feedback_then_approve_loops(tmp_path):
 
 def test_cancel_writes_no_evaluator(tmp_path):
     lab = tmp_path / ".leanlab" / "demo"
-    init.run_init(lab, "demo", "predict",
-                  runner=StructuredRunner(FakeTransport([DRAFT, _prop()])),
-                  ui=FakeUI([("cancel", None)]), verify=False)
+    InitArchitect(runner=StructuredRunner(FakeTransport([DRAFT, _prop()])),
+                  ui=FakeUI([("cancel", None)])).init(lab, "demo", "predict", verify=False)
     assert (lab / "task.md").exists()                # draft is kept
     assert not (lab / "evaluation.py").exists()      # but nothing written on cancel
 
 
 def test_scaffold_creates_skeleton_without_specs(tmp_path):
     lab = tmp_path / ".leanlab" / "demo"
-    init.scaffold(lab, "demo")
+    LabScaffold.create(lab, "demo")
     for f in ("lab.json", "results.jsonl", "Director_Notes.md", "Critic_Feedback.md"):
         assert (lab / f).exists(), f
     assert (lab / "experiments").is_dir()

@@ -2,7 +2,7 @@
 
 import os
 
-from leanlab.core import monitor
+from leanlab.core.monitor import Dashboard
 from leanlab.core.coding.transcripts import Transcripts
 
 
@@ -18,7 +18,7 @@ def test_events_merge_all_sessions_and_usage(tmp_path, monkeypatch):
               "b.jsonl": [{"kind": "text", "text": "attempt 2", "in_tok": 20, "out_tok": 7}]}
     t = Transcripts(tmp_path)
     monkeypatch.setattr(t, "_dir", lambda slug: d)
-    monkeypatch.setattr(monitor, "parse_session", lambda p: ({}, canned[p.name]))
+    monkeypatch.setattr(Dashboard, "parse_session", staticmethod(lambda p: ({}, canned[p.name])))
 
     evs = t.events("demo")
     assert [e["kind"] for e in evs] == ["divider", "text", "divider", "text"]

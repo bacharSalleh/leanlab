@@ -230,12 +230,3 @@ class InitArchitect:
             return
         self._ui.note("[yellow]⚠ wiring check found problems — fixing with Claude before finishing…[/yellow]")
         doctor.fix(runner=runner)
-
-
-# --- module shims (kept for the CLI and the tests) --------------------------
-def scaffold(lab: Path, name: str) -> None:
-    LabScaffold.create(lab, name)
-
-
-def run_init(lab, name, description, *, runner=None, ui=None, verify=True, yes=False) -> None:
-    InitArchitect(runner=runner, ui=ui).init(lab, name, description, verify=verify, yes=yes)

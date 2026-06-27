@@ -4,6 +4,7 @@ Realizes run-experiments/fix-on-error.
 """
 
 from leanlab.core import loop
+from leanlab.core.loop import ExperimentLoop, Lab, ResultsStore
 from leanlab.core.agents import StructuredRunner
 from leanlab.core.agents.port import AgentTransport
 
@@ -42,9 +43,10 @@ def test_fix_retries_then_logs(tmp_path, monkeypatch):
 
     monkeypatch.setattr(loop.Evaluator, "evaluate", fake_eval)
     runner = StructuredRunner(FakeTransport())
-    loop.score_with_fixes(tmp_path, cfg, "t", exp, "sess-1", runner)
+    lab = Lab(tmp_path, cfg)
+    ExperimentLoop(lab, runner=runner).score_with_fixes("t", exp, "sess-1")
 
-    rows = loop.read_results(tmp_path, cfg)
+    rows = ResultsStore(lab).read()
     assert len(rows) == 1 and rows[0]["rmse"] == 0.4
     assert calls["n"] == 2               # failed once, retried once, then logged
 
@@ -53,9 +55,10 @@ def test_fix_exhausts_marks_invalid(tmp_path, monkeypatch):
     cfg, exp = _lab(tmp_path)
     monkeypatch.setattr(loop.Evaluator, "evaluate", lambda self, rel: (None, "boom"))  # always fails
     runner = StructuredRunner(FakeTransport())
-    loop.score_with_fixes(tmp_path, cfg, "t", exp, "sess-1", runner)
+    lab = Lab(tmp_path, cfg)
+    ExperimentLoop(lab, runner=runner).score_with_fixes("t", exp, "sess-1")
 
-    rows = loop.read_results(tmp_path, cfg)
+    rows = ResultsStore(lab).read()
     assert len(rows) == 1
     assert rows[0]["rmse"] is None
     assert "invalid" in rows[0]["notes"]

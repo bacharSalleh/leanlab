@@ -399,59 +399,6 @@ class ExperimentLoop:
         print(f"# Critic every {lab.cfg['critic_every']} loops, Director every {lab.cfg['director_every']}.")
 
 
-# --- module shims (kept for the CLI, the doctor, and the tests) -------------
-def load_lab(lab_dir):
-    return Lab.load(lab_dir).cfg
-
-
-def metric_name(cfg):
-    return cfg["objective"]["metric"]
-
-
-def direction(cfg):
-    return cfg["objective"]["direction"]
-
-
-def read_results(lab_dir, cfg):
-    return ResultsStore(Lab(lab_dir, cfg)).read()
-
-
-def append_result(lab_dir, cfg, record):
-    ResultsStore(Lab(lab_dir, cfg)).append(record)
-
-
-def best_value(rows, cfg):
-    return ResultsStore.rank_best(rows, metric_name(cfg), direction(cfg))
-
-
-def is_better(value, best, d):
-    return ResultsStore.is_better(value, best, d)
-
-
-def build_memory(rows, cfg):
-    return Prompts.memory(rows, metric_name(cfg), direction(cfg))
-
-
-def build_worker_prompt(lab_dir, cfg):
-    return Prompts(Lab(lab_dir, cfg)).worker()
-
-
-def build_director_prompt():
-    return Prompts.director()
-
-
-def build_critic_prompt():
-    return Prompts.critic()
-
-
-def evaluate(lab_dir, cfg, file_rel):
-    return Evaluator(Lab(lab_dir, cfg)).evaluate(file_rel)
-
-
-def score_with_fixes(lab_dir, cfg, tag, exp, session_id, runner):
-    ExperimentLoop(Lab(lab_dir, cfg), runner=runner).score_with_fixes(tag, exp, session_id)
-
-
 def main():
     p = argparse.ArgumentParser(description="Run a leanlab for N experiments.")
     p.add_argument("--lab", required=True, help="path to the lab folder")

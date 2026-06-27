@@ -28,5 +28,3 @@ class Personas:
         return (resources.files("leanlab") / "templates" / "agents" / fname).read_text().strip()
 
 
-def spec_text(role: str, persona_set: str = "coding") -> str:
-    return Personas(persona_set).text(role)

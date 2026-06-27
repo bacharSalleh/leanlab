@@ -23,12 +23,18 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from leanlab.core import doctor, init, loop
+from leanlab.core import doctor, loop
 from leanlab.core.agents import StructuredRunner
 from leanlab.core.agents.port import AgentResult, AgentTransport
-from leanlab.core.coding import board
-from leanlab.core.coding.engineer import build_task
-from leanlab.core.coding.spec import _create_worktree, spec_task
+from leanlab.core.coding.board import Board
+from leanlab.core.coding.engineer import Engineer
+from leanlab.core.coding.events import EventLog
+from leanlab.core.coding.gate import Gate
+from leanlab.core.coding.git import Git
+from leanlab.core.coding.spec import SpecWriter
+from leanlab.core.doctor import LabDoctor
+from leanlab.core.init import InitArchitect
+from leanlab.core.loop import ExperimentLoop, Lab, ResultsStore
 
 ROOT = Path(__file__).resolve().parent.parent
 TRACES = ROOT / ".archik" / "traces"
@@ -100,7 +106,7 @@ def rec_build_task():
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp) / "repo"
         git_repo(repo)
-        wt, _b = _create_worktree(repo, slug)
+        wt, _b = Git().create_worktree(repo, slug)
         (wt / "SPEC.md").write_text(f"# Spec\n\n{task}\n")
         (wt / "tests").mkdir(exist_ok=True)
         (wt / "tests" / "test_acc.py").write_text(acc)
@@ -109,10 +115,11 @@ def rec_build_task():
         locks.mkdir(parents=True, exist_ok=True)
         (locks / f"{slug}.json").write_text(json.dumps({"tests": [
             {"path": "tests/test_acc.py", "content": acc, "sha256": hashlib.sha256(acc.encode()).hexdigest()}]}))
-        res = build_task(repo, slug, runner=Dev(wt), ui=QuietUI(),
-                         gate_cmds=[{"name": "tests", "cmd": f"{PY} -m pytest -q"}],
-                         accept_cmd=f"{PY} -m pytest --noconftest -q", max_attempts=3, reviewers=1, playbook=False)
-        ev = board.read_events(repo, slug)
+        res = Engineer(runner=Dev(wt), ui=QuietUI(),
+                       gate=Gate([{"name": "tests", "cmd": f"{PY} -m pytest -q"}]),
+                       accept_cmd=f"{PY} -m pytest --noconftest -q", max_attempts=3, reviewers=1,
+                       playbook=False).build(repo, slug)
+        ev = EventLog(repo).read(slug)
     a = next((e for e in ev if e["event"] == "attempt"), {})
     r = next((e for e in ev if e["event"] == "review"), {})
     steps = [
@@ -150,7 +157,7 @@ def rec_spec_task():
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp) / "repo"
         git_repo(repo)
-        res = spec_task(repo, task, runner=R(), ui=QuietUI(), yes=True)
+        res = SpecWriter(runner=R(), ui=QuietUI()).spec(repo, task, yes=True)
     sha = hashlib.sha256(test_src.encode()).hexdigest()
     steps = [
         {"id": "m-spec", "from": "cli", "to": "spec", "label": "spec(task)", "data": {"in": {"task": task}}},
@@ -178,8 +185,8 @@ def rec_init_lab():
 
     with tempfile.TemporaryDirectory() as tmp:
         lab = Path(tmp) / ".leanlab" / "house-prices"
-        init.run_init(lab, "house-prices", "predict house value",
-                      runner=StructuredRunner(FakeTransport([draft, prop])), ui=InitUI(), verify=False)
+        InitArchitect(runner=StructuredRunner(FakeTransport([draft, prop])), ui=InitUI()).init(
+            lab, "house-prices", "predict house value", verify=False)
         objective = json.loads((lab / "lab.json").read_text())["objective"]
         eval_py = (lab / "evaluation.py").read_text().strip()
 
@@ -233,8 +240,8 @@ def _metric_lab(tmp, exps):
 def rec_run_score():
     with tempfile.TemporaryDirectory() as tmp:
         lab, cfg, (exp,) = _metric_lab(tmp, [("hgb_01.py", 0.42)])
-        loop.score_with_fixes(lab, cfg, "hgb", exp, "sess-1", StructuredRunner(FakeTransport([])))
-        row = loop.read_results(lab, cfg)[0]
+        ExperimentLoop(Lab(lab, cfg), runner=StructuredRunner(FakeTransport([]))).score_with_fixes("hgb", exp, "sess-1")
+        row = ResultsStore(Lab(lab, cfg)).read()[0]
     return write_trace("run-experiments", "score-and-log", [
         {"id": "m2", "from": "cli", "to": "loop", "label": "run(lab, n)", "data": {"in": {"n": 1}}},
         {"id": "m11", "from": "loop", "to": "evaluator", "label": "score(experiment_file)",
@@ -249,9 +256,9 @@ def rec_run_score():
 def rec_run_rank():
     with tempfile.TemporaryDirectory() as tmp:
         lab, cfg, (e1, e2) = _metric_lab(tmp, [("baseline_01.py", 0.42), ("tuned_02.py", 0.30)])
-        loop.score_with_fixes(lab, cfg, "baseline", e1, "s1", StructuredRunner(FakeTransport([])))
-        loop.score_with_fixes(lab, cfg, "tuned", e2, "s2", StructuredRunner(FakeTransport([])))
-        rows = loop.read_results(lab, cfg)
+        ExperimentLoop(Lab(lab, cfg), runner=StructuredRunner(FakeTransport([]))).score_with_fixes("baseline", e1, "s1")
+        ExperimentLoop(Lab(lab, cfg), runner=StructuredRunner(FakeTransport([]))).score_with_fixes("tuned", e2, "s2")
+        rows = ResultsStore(Lab(lab, cfg)).read()
     ranked = sorted(rows, key=lambda r: r["rmse"])
     return write_trace("run-experiments", "rank-by-objective", [
         {"from": "loop", "to": "results-store", "label": "read all results",
@@ -275,9 +282,9 @@ def rec_run_fix():
 
         loop.Evaluator.evaluate = flaky
         try:
-            loop.score_with_fixes(lab, cfg, "idea", exp, "sess-1", StructuredRunner(
-                FakeTransport(['{"experiment_file": "experiments/idea_01.py", "valid": true}'])))
-            row = loop.read_results(lab, cfg)[0]
+            ExperimentLoop(Lab(lab, cfg), runner=StructuredRunner(
+                FakeTransport(['{"experiment_file": "experiments/idea_01.py", "valid": true}']))).score_with_fixes("idea", exp, "sess-1")
+            row = ResultsStore(Lab(lab, cfg)).read()[0]
         finally:
             loop.Evaluator.evaluate = orig
     return write_trace("run-experiments", "fix-on-error", [
@@ -316,7 +323,7 @@ def _doctor_lab(tmp, metric="score"):
 
 def rec_diagnose_check():
     with tempfile.TemporaryDirectory() as tmp:
-        checks = doctor.check_lab(_doctor_lab(tmp))
+        checks = LabDoctor(_doctor_lab(tmp)).check()
     return write_trace("diagnose-lab", "check-wiring", [
         {"from": "developer", "to": "lab-doctor", "label": "check(lab)", "data": {"in": {"lab": "demo"}}},
         {"from": "lab-doctor", "to": "lab-scaffold", "label": "probe wiring (args, metric key, files)",
@@ -338,9 +345,9 @@ def rec_diagnose_fix():
 
     with tempfile.TemporaryDirectory() as tmp:
         lab = _doctor_lab(tmp, metric="FPS")  # broken: eval prints 'score', objective says 'FPS'
-        before = next(c.status for c in doctor.check_lab(lab) if c.name == "eval metric")
-        ok = doctor.fix_lab(lab, runner=Fixer(lab), ui=QuietUI())
-        after = next(c.status for c in doctor.check_lab(lab) if c.name == "eval metric")
+        before = next(c.status for c in LabDoctor(lab).check() if c.name == "eval metric")
+        ok = LabDoctor(lab).fix(runner=Fixer(lab), ui=QuietUI())
+        after = next(c.status for c in LabDoctor(lab).check() if c.name == "eval metric")
     return write_trace("diagnose-lab", "fix-wiring", [
         {"from": "lab-doctor", "to": "lab-scaffold", "label": "metric-key mismatch detected", "status": "error",
          "data": {"out": {"eval metric": before, "objective": "FPS", "evaluator prints": "score"}}},
@@ -360,7 +367,7 @@ def rec_coding_board():
         (repo / ".leanlab" / "coding-results.jsonl").write_text(
             json.dumps({"slug": "add-health", "merged": True, "attempts": 2}) + "\n"
             + json.dumps({"slug": "fix-bug", "merged": False, "attempts": 4}) + "\n")
-        st = board.coding_state(repo)
+        st = Board(repo).state()
     return write_trace("watch-progress", "coding-board", [
         {"from": "developer", "to": "coding-board", "label": "open the board (GET /api/state)",
          "data": {"in": {"repo": "my-repo"}}},
@@ -374,9 +381,9 @@ def rec_coding_board():
 def rec_metric_dashboard():
     with tempfile.TemporaryDirectory() as tmp:
         lab, cfg, (e1, e2) = _metric_lab(tmp, [("a_01.py", 0.42), ("b_02.py", 0.30)])
-        loop.score_with_fixes(lab, cfg, "a", e1, "s1", StructuredRunner(FakeTransport([])))
-        loop.score_with_fixes(lab, cfg, "b", e2, "s2", StructuredRunner(FakeTransport([])))
-        rows = loop.read_results(lab, cfg)
+        ExperimentLoop(Lab(lab, cfg), runner=StructuredRunner(FakeTransport([]))).score_with_fixes("a", e1, "s1")
+        ExperimentLoop(Lab(lab, cfg), runner=StructuredRunner(FakeTransport([]))).score_with_fixes("b", e2, "s2")
+        rows = ResultsStore(Lab(lab, cfg)).read()
     best = min(rows, key=lambda r: r["rmse"])
     return write_trace("watch-progress", "metric-dashboard", [
         {"from": "developer", "to": "dashboard", "label": "open the dashboard",

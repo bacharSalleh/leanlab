@@ -9,6 +9,8 @@ import subprocess
 from pathlib import Path
 
 from leanlab.core.coding import spec
+from leanlab.core.coding.spec import SpecWriter
+from leanlab.core.coding.git import Git
 from leanlab.core.agents import StructuredRunner
 from leanlab.core.agents.port import AgentTransport
 
@@ -82,9 +84,7 @@ def _git_repo(tmp_path):
 
 def test_spec_drafts_and_locks(tmp_path):
     repo = _git_repo(tmp_path)
-    res = spec.spec_task(repo, "create a health endpoint",
-                         runner=StructuredRunner(FakeTransport([DRAFT])),
-                         ui=FakeUI([("approve", None)]))
+    res = SpecWriter(runner=StructuredRunner(FakeTransport([DRAFT])), ui=FakeUI([("approve", None)])).spec(repo, "create a health endpoint")
     assert res is not None
     wt = Path(res["worktree"])
     assert (wt / "SPEC.md").read_text().startswith("# Spec")
@@ -100,28 +100,23 @@ def test_spec_drafts_and_locks(tmp_path):
 def test_spec_feedback_loops(tmp_path):
     repo = _git_repo(tmp_path)
     t = FakeTransport([DRAFT, DRAFT2])
-    spec.spec_task(repo, "health", runner=StructuredRunner(t),
-                   ui=FakeUI([("feedback", "also test a 404 case"), ("approve", None)]))
+    SpecWriter(runner=StructuredRunner(t), ui=FakeUI([("feedback", "also test a 404 case"), ("approve", None)])).spec(repo, "health")
     assert len(t.prompts) == 2
     assert "also test a 404 case" in t.prompts[1]      # feedback fed into the revise
 
 
 def test_spec_cancel_does_not_lock(tmp_path):
     repo = _git_repo(tmp_path)
-    res = spec.spec_task(repo, "health", runner=StructuredRunner(FakeTransport([DRAFT])),
-                         ui=FakeUI([("cancel", None)]))
+    res = SpecWriter(runner=StructuredRunner(FakeTransport([DRAFT])), ui=FakeUI([("cancel", None)])).spec(repo, "health")
     assert res is None
 
 
 def test_respec_same_task_does_not_crash_on_locked_tests(tmp_path):
     repo = _git_repo(tmp_path)
     args = dict(ui=FakeUI([("approve", None)]))
-    spec.spec_task(repo, "create a health endpoint",
-                   runner=StructuredRunner(FakeTransport([DRAFT])), **args)
+    SpecWriter(runner=StructuredRunner(FakeTransport([DRAFT])), **args).spec(repo, "create a health endpoint")
     # second run reuses the worktree where the tests are now locked read-only
-    res = spec.spec_task(repo, "create a health endpoint",
-                         runner=StructuredRunner(FakeTransport([DRAFT])),
-                         ui=FakeUI([("approve", None)]))
+    res = SpecWriter(runner=StructuredRunner(FakeTransport([DRAFT])), ui=FakeUI([("approve", None)])).spec(repo, "create a health endpoint")
     assert res is not None
     tp = Path(res["worktree"]) / res["test_paths"][0]
     assert not (tp.stat().st_mode & 0o200)              # re-locked after rewrite
@@ -130,8 +125,7 @@ def test_respec_same_task_does_not_crash_on_locked_tests(tmp_path):
 def test_non_git_repo_aborts(tmp_path):
     plain = tmp_path / "plain"
     plain.mkdir()
-    res = spec.spec_task(plain, "health", runner=StructuredRunner(FakeTransport([])),
-                         ui=FakeUI([]))
+    res = SpecWriter(runner=StructuredRunner(FakeTransport([])), ui=FakeUI([])).spec(plain, "health")
     assert res is None                                  # no git → aborts, runner never used
 
 
@@ -141,13 +135,13 @@ def _commit(wt, name):
 
 
 def test_clean_removes_merged_only(tmp_path):
-    from leanlab.core.coding.spec import _create_worktree, clean_worktrees
+    from leanlab.core.coding.spec import clean_worktrees
     repo = _git_repo(tmp_path)
-    wta, bra = _create_worktree(repo, "task-a")        # merged
+    wta, bra = Git().create_worktree(repo, "task-a")        # merged
     (wta / "a.txt").write_text("a"); _commit(wta, "a")
     subprocess.run(["git", "-C", str(repo), "merge", "--no-ff", "-m", "m", bra], check=True, capture_output=True)
     (wta / ".leanlab-lock.json").write_text("{}")      # untracked file must not block removal
-    wtb, _ = _create_worktree(repo, "task-b")          # unmerged commit
+    wtb, _ = Git().create_worktree(repo, "task-b")          # unmerged commit
     (wtb / "b.txt").write_text("b"); _commit(wtb, "b")
 
     removed = clean_worktrees(repo)                     # bulk: merged only
@@ -157,9 +151,9 @@ def test_clean_removes_merged_only(tmp_path):
 
 
 def test_clean_specific_slug_forces(tmp_path):
-    from leanlab.core.coding.spec import _create_worktree, clean_worktrees
+    from leanlab.core.coding.spec import clean_worktrees
     repo = _git_repo(tmp_path)
-    wtb, _ = _create_worktree(repo, "task-b")
+    wtb, _ = Git().create_worktree(repo, "task-b")
     (wtb / "b.txt").write_text("b"); _commit(wtb, "b")  # unmerged
     assert clean_worktrees(repo, "task-b") == ["task-b"]
     assert not (repo / ".leanlab" / "worktrees" / "task-b").exists()
@@ -168,7 +162,6 @@ def test_clean_specific_slug_forces(tmp_path):
 def test_spec_yes_is_headless(tmp_path):
     repo = _git_repo(tmp_path)
     # FakeUI([]) has no scripted decisions — if decide() were called it'd IndexError.
-    res = spec.spec_task(repo, "health", runner=StructuredRunner(FakeTransport([DRAFT])),
-                         ui=FakeUI([]), yes=True)
+    res = SpecWriter(runner=StructuredRunner(FakeTransport([DRAFT])), ui=FakeUI([])).spec(repo, "health", yes=True)
     assert res is not None
     assert (repo / ".leanlab" / "locks" / f"{Path(res['worktree']).name}.json").exists()

@@ -54,10 +54,6 @@ class Gate:
         return GateResult(passed=all(c.ok for c in checks), checks=checks)
 
 
-def run_gate(worktree, gate_cmds=None, *, timeout=600) -> GateResult:
-    return Gate(gate_cmds, timeout=timeout).run(worktree)
-
-
 def report(result: GateResult, console=None):
     """Print a rich pass/fail report."""
     if console is None:

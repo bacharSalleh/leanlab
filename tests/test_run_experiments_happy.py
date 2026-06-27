@@ -5,7 +5,7 @@ Realizes run-experiments/score-and-log.
 
 from pathlib import Path
 
-from leanlab.core import loop
+from leanlab.core.loop import ExperimentLoop, Lab, ResultsStore
 from leanlab.core.agents import StructuredRunner
 from leanlab.core.agents.port import AgentTransport
 
@@ -48,15 +48,15 @@ def test_structured_runner_gives_up_after_max_retries():
 
 
 def test_score_and_log_happy():
-    cfg = loop.load_lab(LAB)
-    cfg["results_file"] = "_t_happy.jsonl"         # don't touch the real book
-    results = LAB / cfg["results_file"]
+    lab = Lab.load(LAB)
+    lab.cfg["results_file"] = "_t_happy.jsonl"      # don't touch the real book
+    results = LAB / lab.cfg["results_file"]
     results.write_text("")
     try:
         exp = LAB / "experiments" / "sample.py"
         runner = StructuredRunner(FakeTransport([]))   # not used on the happy path
-        loop.score_with_fixes(LAB, cfg, "test", exp, "sess-1", runner)
-        rows = loop.read_results(LAB, cfg)
+        ExperimentLoop(lab, runner=runner).score_with_fixes("test", exp, "sess-1")
+        rows = ResultsStore(lab).read()
         assert len(rows) == 1
         assert "rmse" in rows[0]
         assert rows[0]["best_so_far"] is True

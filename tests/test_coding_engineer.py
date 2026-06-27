@@ -9,8 +9,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from leanlab.core.coding.engineer import build_task
-from leanlab.core.coding.spec import _create_worktree
+from leanlab.core.coding.engineer import Engineer
+from leanlab.core.coding.gate import Gate
+from leanlab.core.coding.git import Git
 from leanlab.core.agents.port import AgentResult
 
 PYTEST = f"{sys.executable} -m pytest -q"
@@ -58,7 +59,7 @@ def _spec_wt(tmp_path):
     g("add", "-A")
     g("commit", "-q", "-m", "init")
 
-    wt, _branch = _create_worktree(repo, "demo")
+    wt, _branch = Git().create_worktree(repo, "demo")
     (wt / "SPEC.md").write_text("# Spec\n\nmake impl.py exist")
     (wt / "tests").mkdir(exist_ok=True)
     t = wt / "tests" / "test_acc.py"
@@ -78,8 +79,7 @@ def _noop(_w):
 def test_builds_and_merges(tmp_path):
     repo, wt = _spec_wt(tmp_path)
     dev = FakeDev(wt, [_write_impl], [{"approved": True, "feedback": ""}])
-    res = build_task(repo, "demo", runner=dev, ui=FakeUI(),
-                     gate_cmds=[{"name": "tests", "cmd": PYTEST}], max_attempts=3, playbook=False)
+    res = Engineer(runner=dev, ui=FakeUI(), gate=Gate([{"name": "tests", "cmd": PYTEST}]), max_attempts=3, playbook=False).build(repo, "demo")
     assert res["merged"] is True and res["attempts"] == 1
     assert (repo / "impl.py").exists()             # merged into the main worktree
 
@@ -87,8 +87,7 @@ def test_builds_and_merges(tmp_path):
 def test_gate_fail_then_pass(tmp_path):
     repo, wt = _spec_wt(tmp_path)
     dev = FakeDev(wt, [_noop, _write_impl], [{"approved": True, "feedback": ""}])
-    res = build_task(repo, "demo", runner=dev, ui=FakeUI(),
-                     gate_cmds=[{"name": "tests", "cmd": PYTEST}], max_attempts=3, playbook=False)
+    res = Engineer(runner=dev, ui=FakeUI(), gate=Gate([{"name": "tests", "cmd": PYTEST}]), max_attempts=3, playbook=False).build(repo, "demo")
     assert res["merged"] is True and res["attempts"] == 2
 
 
@@ -96,16 +95,14 @@ def test_review_reject_then_approve(tmp_path):
     repo, wt = _spec_wt(tmp_path)
     dev = FakeDev(wt, [_write_impl, _write_impl],
                   [{"approved": False, "feedback": "rename it"}, {"approved": True, "feedback": ""}])
-    res = build_task(repo, "demo", runner=dev, ui=FakeUI(),
-                     gate_cmds=[{"name": "tests", "cmd": PYTEST}], max_attempts=3, playbook=False)
+    res = Engineer(runner=dev, ui=FakeUI(), gate=Gate([{"name": "tests", "cmd": PYTEST}]), max_attempts=3, playbook=False).build(repo, "demo")
     assert res["merged"] is True and res["attempts"] == 2
 
 
 def test_gives_up_after_max_attempts(tmp_path):
     repo, wt = _spec_wt(tmp_path)
     dev = FakeDev(wt, [_noop, _noop], [])          # never produces a passing impl
-    res = build_task(repo, "demo", runner=dev, ui=FakeUI(),
-                     gate_cmds=[{"name": "tests", "cmd": PYTEST}], max_attempts=2, playbook=False)
+    res = Engineer(runner=dev, ui=FakeUI(), gate=Gate([{"name": "tests", "cmd": PYTEST}]), max_attempts=2, playbook=False).build(repo, "demo")
     assert res["merged"] is False
 
 
@@ -133,8 +130,7 @@ def test_pristine_restore_defeats_weakened_test(tmp_path):
     _write_lock(repo)
     dev = FakeDev(wt, [_weaken_test, _weaken_test],   # weaken the test, never write impl.py
                   [{"approved": True, "score": 100, "feedback": ""}] * 2)
-    res = build_task(repo, "demo", runner=dev, ui=FakeUI(),
-                     gate_cmds=[{"name": "tests", "cmd": PYTEST}], max_attempts=2, playbook=False)
+    res = Engineer(runner=dev, ui=FakeUI(), gate=Gate([{"name": "tests", "cmd": PYTEST}]), max_attempts=2, playbook=False).build(repo, "demo")
     assert res["merged"] is False                    # restore runs the REAL test, which fails (no impl)
 
 
@@ -148,8 +144,7 @@ def test_touching_locked_tests_is_rejected_even_when_correct(tmp_path):
 
     dev = FakeDev(wt, [cheat_but_correct, cheat_but_correct],
                   [{"approved": True, "score": 100, "feedback": ""}] * 2)
-    res = build_task(repo, "demo", runner=dev, ui=FakeUI(),
-                     gate_cmds=[{"name": "tests", "cmd": PYTEST}], max_attempts=2, playbook=False)
+    res = Engineer(runner=dev, ui=FakeUI(), gate=Gate([{"name": "tests", "cmd": PYTEST}]), max_attempts=2, playbook=False).build(repo, "demo")
     assert res["merged"] is False                    # gate passes on restored test, but touching → rejected
 
 
@@ -157,8 +152,7 @@ def test_clean_build_with_lock_merges(tmp_path):
     repo, wt = _spec_wt(tmp_path)
     _write_lock(repo)                                # lock present; engineer never touches the test
     dev = FakeDev(wt, [_write_impl], [{"approved": True, "score": 100, "feedback": ""}])
-    res = build_task(repo, "demo", runner=dev, ui=FakeUI(),
-                     gate_cmds=[{"name": "tests", "cmd": PYTEST}], max_attempts=2, playbook=False)
+    res = Engineer(runner=dev, ui=FakeUI(), gate=Gate([{"name": "tests", "cmd": PYTEST}]), max_attempts=2, playbook=False).build(repo, "demo")
     assert res["merged"] is True
 
 
@@ -167,9 +161,7 @@ def test_quality_threshold_blocks_then_passes(tmp_path):
     dev = FakeDev(wt, [_write_impl, _write_impl],
                   [{"approved": True, "score": 40, "feedback": "too messy"},
                    {"approved": True, "score": 90, "feedback": ""}])
-    res = build_task(repo, "demo", runner=dev, ui=FakeUI(),
-                     gate_cmds=[{"name": "tests", "cmd": PYTEST}], max_attempts=3,
-                     playbook=False, min_quality=70)
+    res = Engineer(runner=dev, ui=FakeUI(), gate=Gate([{"name": "tests", "cmd": PYTEST}]), max_attempts=3, playbook=False, min_quality=70).build(repo, "demo")
     assert res["merged"] is True and res["attempts"] == 2 and res["quality"] == 90
 
 
@@ -185,18 +177,17 @@ def test_deleting_a_locked_test_is_restored(tmp_path):
 
     dev = FakeDev(wt, [delete_locked, delete_locked],
                   [{"approved": True, "score": 100, "feedback": ""}] * 2)
-    res = build_task(repo, "demo", runner=dev, ui=FakeUI(),
-                     gate_cmds=[{"name": "tests", "cmd": PYTEST}], max_attempts=2, playbook=False)
+    res = Engineer(runner=dev, ui=FakeUI(), gate=Gate([{"name": "tests", "cmd": PYTEST}]), max_attempts=2, playbook=False).build(repo, "demo")
     assert res["merged"] is False                  # restored test runs and fails (no impl)
 
 
 def test_persona_resolver():
-    from leanlab.core.coding.personas import PERSONAS, spec_text
+    from leanlab.core.coding.personas import PERSONAS, Personas
     assert PERSONAS["coding"]["engineer"] == "engineer.md"
     assert PERSONAS["coding"]["reviewer"] == "reviewer.md"
     assert PERSONAS["metric"]["worker"] == "CLAUDE.md"
-    assert "Engineer" in spec_text("engineer", "coding")
-    assert "Reviewer" in spec_text("reviewer", "coding")
+    assert "Engineer" in Personas("coding").text("engineer")
+    assert "Reviewer" in Personas("coding").text("reviewer")
 
 
 def test_isolation_passes_self_contained(tmp_path):
@@ -276,7 +267,5 @@ def test_panel_quorum_blocks_merge(tmp_path):
     dev = FakeDev(wt, [_write_impl],
                   [{"approved": True, "score": 95, "feedback": ""},
                    {"approved": False, "score": 30, "feedback": "missing empty-input case"}])
-    res = build_task(repo, "demo", runner=dev, ui=FakeUI(),
-                     gate_cmds=[{"name": "tests", "cmd": PYTEST}],
-                     max_attempts=1, playbook=False, reviewers=2)
+    res = Engineer(runner=dev, ui=FakeUI(), gate=Gate([{"name": "tests", "cmd": PYTEST}]), max_attempts=1, playbook=False, reviewers=2).build(repo, "demo")
     assert res["merged"] is False

@@ -2,7 +2,7 @@
 
 import sys
 
-from leanlab.core.coding.gate import Gate, run_gate
+from leanlab.core.coding.gate import Gate
 
 
 def _wt(tmp_path, test_body):
@@ -17,14 +17,14 @@ PYTEST = f"{sys.executable} -m pytest -q"
 
 def test_gate_passes_when_tests_pass(tmp_path):
     wt = _wt(tmp_path, "def test_ok():\n    assert 1 + 1 == 2\n")
-    res = run_gate(wt, [{"name": "tests", "cmd": PYTEST}])
+    res = Gate([{"name": "tests", "cmd": PYTEST}]).run(wt)
     assert res.passed is True
     assert res.checks[0].ok and res.checks[0].code == 0
 
 
 def test_gate_fails_when_tests_fail(tmp_path):
     wt = _wt(tmp_path, "def test_bad():\n    assert False\n")
-    res = run_gate(wt, [{"name": "tests", "cmd": PYTEST}])
+    res = Gate([{"name": "tests", "cmd": PYTEST}]).run(wt)
     assert res.passed is False
     assert not res.checks[0].ok
     assert "assert" in res.checks[0].output.lower()
@@ -32,17 +32,17 @@ def test_gate_fails_when_tests_fail(tmp_path):
 
 def test_gate_needs_all_steps_green(tmp_path):
     wt = _wt(tmp_path, "def test_ok():\n    assert True\n")
-    res = run_gate(wt, [
+    res = Gate([
         {"name": "tests", "cmd": PYTEST},
         {"name": "lint", "cmd": f"{sys.executable} -c \"import sys; sys.exit(1)\""},
-    ])
+    ]).run(wt)
     assert res.passed is False
     assert len(res.failures()) == 1 and res.failures()[0].name == "lint"
 
 
 def test_gate_handles_unrunnable_command(tmp_path):
     wt = _wt(tmp_path, "def test_ok():\n    assert True\n")
-    res = run_gate(wt, [{"name": "tests", "cmd": "this_binary_does_not_exist_xyz --q"}])
+    res = Gate([{"name": "tests", "cmd": "this_binary_does_not_exist_xyz --q"}]).run(wt)
     assert res.passed is False
     assert "could not run" in res.checks[0].output
 

@@ -3,7 +3,7 @@
 Overview (`/`) lists task cards from `.leanlab/worktrees/*`, `.leanlab/coding-results.jsonl`,
 and `.leanlab/PLAYBOOK.md`. A task detail (`/?task=<slug>`) shows the build TIMELINE (from the
 structured event log written by `build`) and the live agent CHAT (parsed from the worktree's
-Claude transcripts). `coding_state` / `task_detail` / the renderers are pure and testable.
+Claude transcripts). `Board` builds the state; the renderers are pure and testable.
 """
 
 from __future__ import annotations
@@ -24,20 +24,6 @@ from .transcripts import Transcripts
 _STATUS = {"merged": "#3fb950", "failed": "#f85149", "spec'd": "#d29922", "building": "#58a6ff"}
 
 
-# --- structured event log (the timeline) ------------------------------------
-def _events_path(repo, slug):
-    return EventLog(repo)._path(slug)
-
-
-def log_event(repo, slug, rec):
-    """Append one build event for a task (used by spec/build to feed the timeline)."""
-    EventLog(repo).log(slug, rec)
-
-
-def read_events(repo, slug):
-    return EventLog(repo).read(slug)
-
-
 # --- agent chat (transcripts) ----------------------------------------------
 # One Transcripts per repo so its parse cache survives across SSE polls.
 _TRANSCRIPTS = {}
@@ -48,18 +34,6 @@ def _transcripts(repo):
     if key not in _TRANSCRIPTS:
         _TRANSCRIPTS[key] = Transcripts(repo)
     return _TRANSCRIPTS[key]
-
-
-def _transcript_dir(repo, slug):
-    return _transcripts(repo)._dir(slug)
-
-
-def _task_transcript_events(repo, slug):
-    return _transcripts(repo).events(slug)
-
-
-def _task_usage(repo, slug):
-    return _transcripts(repo).usage(slug)
 
 
 # --- state (the Board) ------------------------------------------------------
@@ -159,22 +133,6 @@ class Board:
         return {"lab": self._repo.resolve().name, **self.state()}
 
 
-def coding_state(repo) -> dict:
-    return Board(repo).state()
-
-
-def task_detail(repo, slug) -> dict:
-    return Board(repo).task(slug)
-
-
-def overview_state(repo) -> dict:
-    return Board(repo).overview()
-
-
-def _task_status(repo, slug, by_slug=None):
-    return Board(repo)._status(slug, by_slug)
-
-
 _DIST = Path(__file__).resolve().parent / "board_dist"   # built React app (see frontend/)
 
 _NOT_BUILT_HTML = (
@@ -206,6 +164,7 @@ class _QuietServer(ThreadingHTTPServer):
 
 def serve_board(repo, port=8766, open_browser=True):
     repo = Path(repo).resolve()
+    board = Board(repo)                          # one Board for the server (shares the transcript cache)
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -237,12 +196,12 @@ def serve_board(repo, port=8766, open_browser=True):
             last_ping = 0.0
             try:
                 while True:
-                    st = json.dumps(overview_state(repo))
+                    st = json.dumps(board.overview())
                     if st != last_state:
                         self._sse("state", st)
                         last_state = st
                     if slug:
-                        td = json.dumps(task_detail(repo, slug))
+                        td = json.dumps(board.task(slug))
                         if td != last_task:
                             self._sse("task", td)
                             last_task = td
@@ -262,10 +221,10 @@ def serve_board(repo, port=8766, open_browser=True):
                     self.stream(q.get("task", [""])[0])
                     return
                 if route.path == "/api/state":
-                    self._send(json.dumps(overview_state(repo)))
+                    self._send(json.dumps(board.overview()))
                     return
                 if route.path == "/api/task":
-                    self._send(json.dumps(task_detail(repo, q.get("task", [""])[0])))
+                    self._send(json.dumps(board.task(q.get("task", [""])[0])))
                     return
                 # static: the built React app. Unknown paths fall back to index.html (SPA).
                 f = _asset(route.path) or _asset("index.html")

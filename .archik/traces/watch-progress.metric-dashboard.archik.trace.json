@@ -2,7 +2,7 @@
   "version": "1.0",
   "useCase": "watch-progress",
   "slice": "metric-dashboard",
-  "recordedAt": "2026-06-27T11:45:03.049947+00:00",
+  "recordedAt": "2026-06-27T14:20:58.733252+00:00",
   "steps": [
     {
       "from": "developer",

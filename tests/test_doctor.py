@@ -6,6 +6,7 @@ import sys
 import textwrap
 
 from leanlab.core import doctor
+from leanlab.core.doctor import LabDoctor
 
 # A correct evaluator: parses --experiment, emits JSON with the objective key.
 GOOD_EVAL = textwrap.dedent('''
@@ -47,7 +48,7 @@ def _status(checks, name):
 
 
 def test_good_lab_passes_wiring(tmp_path):
-    checks = doctor.check_lab(_mklab(tmp_path, GOOD_EVAL))
+    checks = LabDoctor(_mklab(tmp_path, GOOD_EVAL)).check()
     assert _status(checks, "eval args") == "ok"
     assert _status(checks, "eval metric") == "ok"
     assert _status(checks, "validate args") == "ok"
@@ -56,17 +57,17 @@ def test_good_lab_passes_wiring(tmp_path):
 
 
 def test_arg_mismatch_detected(tmp_path):
-    checks = doctor.check_lab(_mklab(tmp_path, BAD_ARG_EVAL))
+    checks = LabDoctor(_mklab(tmp_path, BAD_ARG_EVAL)).check()
     assert _status(checks, "eval args") == "fail"
 
 
 def test_metric_mismatch_detected(tmp_path):
-    checks = doctor.check_lab(_mklab(tmp_path, GOOD_EVAL, metric="FPS"))  # prints "score", not "FPS"
+    checks = LabDoctor(_mklab(tmp_path, GOOD_EVAL, metric="FPS")).check()  # prints "score", not "FPS"
     assert _status(checks, "eval metric") == "fail"
 
 
 def test_missing_lab_json(tmp_path):
-    checks = doctor.check_lab(tmp_path / "nope")
+    checks = LabDoctor(tmp_path / "nope").check()
     assert checks[0].status == "fail" and checks[0].name == "lab.json"
 
 
@@ -76,7 +77,7 @@ def test_missing_files_flagged(tmp_path):
     lab.joinpath("lab.json").write_text(json.dumps({
         "objective": {"metric": "score", "direction": "max"}, "experiments_dir": "experiments",
         "results_file": "r.jsonl", "eval_cmd": "x {file}", "validate_cmd": "x {file}"}))
-    checks = doctor.check_lab(lab)
+    checks = LabDoctor(lab).check()
     assert _status(checks, "evaluation.py") == "fail"
     assert _status(checks, "experiments/") == "fail"
 
@@ -108,7 +109,7 @@ def test_fix_lab_resolves_metric_mismatch(tmp_path, monkeypatch):
     monkeypatch.setattr("leanlab.core.doctor.shutil.which", lambda *_: "/usr/bin/claude")
     lab = _mklab(tmp_path, GOOD_EVAL, metric="FPS")     # broken: eval prints "score", not "FPS"
     runner = _FixingRunner(lab)
-    assert doctor.fix_lab(lab, runner=runner, ui=_FakeUI()) is True
+    assert LabDoctor(lab).fix(runner=runner, ui=_FakeUI()) is True
     assert runner.calls == 1                            # one fix round was enough
 
 
@@ -120,4 +121,4 @@ def test_fix_lab_true_when_already_healthy(tmp_path, monkeypatch):
         def run_plain(self, _p):
             raise AssertionError("must not try to fix a healthy lab")
 
-    assert doctor.fix_lab(lab, runner=_NoRunner(), ui=_FakeUI()) is True
+    assert LabDoctor(lab).fix(runner=_NoRunner(), ui=_FakeUI()) is True

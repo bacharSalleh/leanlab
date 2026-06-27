@@ -245,15 +245,6 @@ class Engineer:
         return {"branch": branch, "attempts": self._max_attempts, "merged": False}
 
 
-def build_task(repo, slug, *, runner=None, ui=None, gate_cmds=None,
-               persona_set="coding", max_attempts=5, playbook=True, min_quality=0,
-               isolate=True, accept_cmd="pytest --noconftest -q", reviewers=1):
-    eng = Engineer(runner=runner, ui=ui, gate=Gate(gate_cmds), persona_set=persona_set,
-                   reviewers=reviewers, max_attempts=max_attempts, min_quality=min_quality,
-                   playbook=playbook, isolate=isolate, accept_cmd=accept_cmd)
-    return eng.build(repo, slug)
-
-
 class BuildUI:
     """Terminal UI for `leanlab build` — attempt rules, spinners, gate report, merge panel."""
 

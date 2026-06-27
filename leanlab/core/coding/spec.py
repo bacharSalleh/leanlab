@@ -131,33 +131,14 @@ class SpecWriter:
         return {"worktree": str(wt), "branch": branch, "test_paths": [t["path"] for t in files]}
 
 
-# --- module shims (kept for the CLI, tests, and the trace recorder) ---------
-_GIT = Git()
-
-
-def _git(repo, *args):
-    return _GIT.run(repo, *args)
-
-
-def _is_git_repo(repo) -> bool:
-    return _GIT.is_repo(repo)
-
-
-def _create_worktree(repo, slug):
-    return _GIT.create_worktree(repo, slug)
-
-
-def _merged_branches(repo):
-    return _GIT.merged_branches(repo)
-
-
 def clean_worktrees(repo, slug=None, *, remove_all=False) -> list[str]:
     """Remove task worktrees + branches. Bulk removes only merged ones unless remove_all."""
     repo = Path(repo).resolve()
     wtroot = repo / ".leanlab" / "worktrees"
     if not wtroot.is_dir():
         return []
-    merged = _merged_branches(repo)
+    git = Git()
+    merged = git.merged_branches(repo)
     if slug:
         targets = [slug] if (wtroot / slug).is_dir() else []
     else:
@@ -169,15 +150,11 @@ def clean_worktrees(repo, slug=None, *, remove_all=False) -> list[str]:
         force_branch = remove_all or bool(slug) or branch not in merged
         # always --force the worktree: real task worktrees carry an untracked .leanlab-lock.json
         # that would otherwise block removal. Branch deletion stays safe (-d) unless forced.
-        _git(repo, "worktree", "remove", "--force", str(wtroot / s))
-        _git(repo, "branch", "-D" if force_branch else "-d", branch)
+        git.run(repo, "worktree", "remove", "--force", str(wtroot / s))
+        git.run(repo, "branch", "-D" if force_branch else "-d", branch)
         LockStore(repo).remove(s)
         removed.append(s)
     return removed
-
-
-def spec_task(repo, task, *, runner=None, ui=None, yes=False):
-    return SpecWriter(runner=runner, ui=ui).spec(repo, task, yes=yes)
 
 
 class SpecUI:

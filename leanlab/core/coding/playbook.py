@@ -58,13 +58,3 @@ class TechLead:
             EventLog(repo).log(slug, {"event": "playbook"})
 
 
-def playbook_path(repo) -> Path:
-    return Playbook(repo).path
-
-
-def read_playbook(repo) -> str:
-    return Playbook(repo).read()
-
-
-def update_playbook(repo, *, slug=None, runner=None, ui=None) -> None:
-    TechLead(runner=runner, ui=ui).refresh(repo, slug)
