@@ -6,6 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Re-architected the Python codebase to OOP + dependency injection. Logic now
+  lives in classes with constructor-injected collaborators (coding side:
+  `EventLog`, `LockStore`, `Git`, `Transcripts`, `Gate`, `Personas`, `Playbook`,
+  `TechLead`, `SpecWriter`, `Engineer`, `ReviewPanel`, `Board`; metric side:
+  `Lab`, `ResultsStore`, `Evaluator`, `Prompts`, `ExperimentLoop`, `LabDoctor`,
+  `LabScaffold`, `InitArchitect`, `Dashboard`). `cli.py` is the single
+  composition root. Behavior is unchanged; thin module-level shims remain for
+  the tests and the trace recorder.
+
+### Fixed
+- Honesty model: the isolated acceptance re-run now fails CLOSED on a timeout
+  and on "no tests collected" (pytest exit 5) — previously a hung or
+  uncollectable pristine run was treated as honest, letting gamed code through.
+- `Git.merge` reports failure when the branch carried no changes ("Already up to
+  date") instead of a false success.
+- Structured-output parsing extracts NESTED JSON (spec/init replies) wrapped in
+  prose or code fences via a brace-balanced, string-aware scan.
+- The metric dashboard detects experiment filenames with hyphens/dots.
+
 ## [0.2.2] - 2026-06-26
 
 ### Added
