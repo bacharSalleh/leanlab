@@ -9,13 +9,13 @@ Claude or a terminal.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import subprocess
 from pathlib import Path
 
 from ..loop import make_runner
 from .board import log_event
+from .locks import LockStore
 
 
 # Filler words dropped from slugs so the name leads with what matters.
@@ -171,9 +171,7 @@ def spec_task(repo, task, *, runner=None, ui=None, yes=False):
                        "sha256": hashlib.sha256(t["content"].encode()).hexdigest()} for t in files]
             for t in files:
                 (wt / t["path"]).chmod(0o444)    # in-tree lock is a cosmetic guardrail only
-            locks = repo / ".leanlab" / "locks"
-            locks.mkdir(parents=True, exist_ok=True)
-            (locks / f"{slug}.json").write_text(json.dumps({"tests": locked}))
+            LockStore(repo).write(slug, locked)
             log_event(repo, slug, {"event": "spec", "tests": [t["path"] for t in files]})
             break
         if action == "cancel":

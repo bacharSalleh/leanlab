@@ -7,7 +7,6 @@ commits and merges the branch into main. `runner` / `ui` are injected for testin
 
 from __future__ import annotations
 
-import hashlib
 import json
 import shlex
 import subprocess
@@ -17,6 +16,7 @@ from pathlib import Path
 from ..loop import make_runner
 from .board import log_event
 from .gate import run_gate
+from .locks import LockStore
 from .personas import spec_text
 from .playbook import read_playbook, update_playbook
 
@@ -36,26 +36,6 @@ def _record(repo, rec):
         f.write(json.dumps(rec) + "\n")
 
 
-def _load_lock(repo, slug):
-    """Load the out-of-tree lock (pristine acceptance tests). None if the task wasn't spec'd."""
-    p = Path(repo) / ".leanlab" / "locks" / f"{slug}.json"
-    if not p.exists():
-        return None
-    try:
-        return json.loads(p.read_text())
-    except (OSError, ValueError):
-        return None
-
-
-def _is_pristine(lock, wt) -> bool:
-    """Did the engineer leave the locked tests untouched? (missing or changed = tampered)"""
-    for it in lock.get("tests", []):
-        p = Path(wt) / it["path"]
-        if not p.exists() or hashlib.sha256(p.read_bytes()).hexdigest() != it["sha256"]:
-            return False
-    return True
-
-
 def _isolated_acceptance(wt, lock, accept_cmd):
     """Re-run the pristine acceptance tests with engineer conftest/fixtures DISABLED.
 
@@ -73,18 +53,6 @@ def _isolated_acceptance(wt, lock, accept_cmd):
         return True, f"(isolation skipped: {e})"
     out = (proc.stdout + ("\n" + proc.stderr if proc.stderr else "")).strip()
     return (proc.returncode != 1), out
-
-
-def _restore_tests(lock, wt) -> None:
-    """Overwrite the worktree's acceptance tests with the pristine, out-of-tree copies, so the
-    gate always runs the ORIGINAL tests no matter what the engineer did to them."""
-    for it in lock.get("tests", []):
-        p = Path(wt) / it["path"]
-        p.parent.mkdir(parents=True, exist_ok=True)
-        if p.exists():
-            p.chmod(0o644)
-        p.write_text(it["content"])
-        p.chmod(0o444)
 
 
 def _stage(wt):
@@ -192,7 +160,8 @@ def build_task(repo, slug, *, runner=None, ui=None, gate_cmds=None,
     branch = f"leanlab/{slug}"
     spec_md = (wt / "SPEC.md").read_text() if (wt / "SPEC.md").exists() else ""
     pb = read_playbook(repo)
-    lock = _load_lock(repo, slug)
+    locks = LockStore(repo)
+    lock = locks.load(slug)
     runner = runner or make_runner(wt)
 
     feedback = None
@@ -201,9 +170,9 @@ def build_task(repo, slug, *, runner=None, ui=None, gate_cmds=None,
         with ui.status("Engineer is implementing the change…"):
             runner.run_plain(_engineer_prompt(spec_md, persona_set, feedback, pb))
 
-        tampered = lock is not None and not _is_pristine(lock, wt)
+        tampered = lock is not None and not locks.is_pristine(slug, wt)
         if lock is not None:
-            _restore_tests(lock, wt)             # the gate ALWAYS runs the pristine acceptance tests
+            locks.restore(slug, wt)              # the gate ALWAYS runs the pristine acceptance tests
 
         result = run_gate(wt, gate_cmds)
         ui.gate(result)
