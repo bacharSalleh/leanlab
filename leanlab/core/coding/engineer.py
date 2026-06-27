@@ -16,6 +16,7 @@ from pathlib import Path
 from ..loop import make_runner
 from .board import log_event
 from .gate import run_gate
+from .git import Git
 from .locks import LockStore
 from .personas import spec_text
 from .playbook import read_playbook, update_playbook
@@ -23,8 +24,11 @@ from .playbook import read_playbook, update_playbook
 _APPROVED = (True, "true", "yes", "True")
 
 
+_GIT = Git()
+
+
 def _git(repo, *args):
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    return _GIT.run(repo, *args)
 
 
 def _record(repo, rec):
@@ -56,19 +60,7 @@ def _isolated_acceptance(wt, lock, accept_cmd):
 
 
 def _stage(wt):
-    """Stage all changes except gate caches and the lock file."""
-    ep = _git(wt, "rev-parse", "--git-path", "info/exclude").stdout.strip()
-    epath = Path(ep) if Path(ep).is_absolute() else Path(wt) / ep
-    try:
-        epath.parent.mkdir(parents=True, exist_ok=True)
-        cur = epath.read_text() if epath.exists() else ""
-        for pat in ("__pycache__/", ".pytest_cache/", ".leanlab-lock.json"):
-            if pat not in cur:
-                cur += pat + "\n"
-        epath.write_text(cur)
-    except Exception:  # noqa: BLE001
-        pass
-    _git(wt, "add", "-A")
+    _GIT.stage(wt)
 
 
 def _engineer_prompt(spec_md, persona_set, feedback, playbook=""):
@@ -234,13 +226,10 @@ def build_task(repo, slug, *, runner=None, ui=None, gate_cmds=None,
 
 
 def _merge(repo, wt, branch, slug, ui) -> bool:
-    _stage(wt)
-    _git(wt, "commit", "-m", f"leanlab: {slug}")
-    r = _git(repo, "merge", "--no-ff", "-m", f"leanlab: merge {slug}", branch)
-    if r.returncode != 0:
-        ui.error("merge failed (resolve by hand): " + (r.stderr or r.stdout).strip())
-        return False
-    return True
+    ok, err = _GIT.merge(repo, wt, branch, slug)
+    if not ok:
+        ui.error("merge failed (resolve by hand): " + err)
+    return ok
 
 
 class BuildUI:

@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import hashlib
 import re
-import subprocess
 from pathlib import Path
 
 from ..loop import make_runner
 from .board import log_event
+from .git import Git
 from .locks import LockStore
 
 
@@ -45,39 +45,23 @@ def _slug(task: str, max_len: int = 50) -> str:
     return out or "task"
 
 
+_GIT = Git()
+
+
 def _git(repo, *args):
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    return _GIT.run(repo, *args)
 
 
 def _is_git_repo(repo) -> bool:
-    return _git(repo, "rev-parse", "--is-inside-work-tree").returncode == 0
+    return _GIT.is_repo(repo)
 
 
 def _create_worktree(repo, slug):
-    """Create (or reuse) an isolated worktree + branch for this task."""
-    wt = Path(repo) / ".leanlab" / "worktrees" / slug
-    branch = f"leanlab/{slug}"
-    gi = Path(repo) / ".gitignore"
-    line = ".leanlab/worktrees/"
-    if not gi.exists() or line not in gi.read_text():
-        with gi.open("a") as f:
-            f.write(("" if not gi.exists() or gi.read_text().endswith("\n") else "\n") + line + "\n")
-    if wt.exists():
-        return wt, branch
-    wt.parent.mkdir(parents=True, exist_ok=True)
-    r = _git(repo, "worktree", "add", "-b", branch, str(wt))
-    if r.returncode != 0:                       # branch may already exist — attach to it
-        r2 = _git(repo, "worktree", "add", str(wt), branch)
-        if r2.returncode != 0:
-            raise RuntimeError("git worktree add failed: " + (r.stderr or r2.stderr).strip())
-    return wt, branch
+    return _GIT.create_worktree(repo, slug)
 
 
 def _merged_branches(repo):
-    # `git branch` marks the current branch with "* " and worktree-checked-out ones with "+ ";
-    # the name is after the 2-char marker.
-    out = _git(repo, "branch", "--merged").stdout
-    return {ln[2:].strip() for ln in out.splitlines() if ln.strip()}
+    return _GIT.merged_branches(repo)
 
 
 def clean_worktrees(repo, slug=None, *, remove_all=False) -> list[str]:
@@ -100,7 +84,7 @@ def clean_worktrees(repo, slug=None, *, remove_all=False) -> list[str]:
         # that would otherwise block removal. Branch deletion stays safe (-d) unless forced.
         _git(repo, "worktree", "remove", "--force", str(wtroot / s))
         _git(repo, "branch", "-D" if force_branch else "-d", branch)
-        (repo / ".leanlab" / "locks" / f"{s}.json").unlink(missing_ok=True)
+        LockStore(repo).remove(s)
         removed.append(s)
     return removed
 
