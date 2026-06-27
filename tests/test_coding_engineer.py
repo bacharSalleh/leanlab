@@ -202,7 +202,7 @@ def test_persona_resolver():
 def test_isolation_passes_self_contained(tmp_path):
     from leanlab.core.coding import engineer
     (tmp_path / "test_acc.py").write_text("def test_x():\n    assert 1 + 1 == 2\n")
-    ok, _ = engineer._isolated_acceptance(
+    ok, _ = engineer.Engineer._isolated_acceptance(
         tmp_path, {"tests": [{"path": "test_acc.py"}]}, f"{sys.executable} -m pytest --noconftest -q")
     assert ok is True
 
@@ -212,7 +212,7 @@ def test_isolation_catches_conftest_dependence(tmp_path):
     # passes normally (conftest provides the fixture), but fails with conftest disabled
     (tmp_path / "test_acc.py").write_text("def test_x(secret):\n    assert secret == 42\n")
     (tmp_path / "conftest.py").write_text("import pytest\n@pytest.fixture\ndef secret():\n    return 42\n")
-    ok, _ = engineer._isolated_acceptance(
+    ok, _ = engineer.Engineer._isolated_acceptance(
         tmp_path, {"tests": [{"path": "test_acc.py"}]}, f"{sys.executable} -m pytest --noconftest -q")
     assert ok is False
 

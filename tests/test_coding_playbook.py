@@ -4,7 +4,7 @@ import contextlib
 from pathlib import Path
 
 from leanlab.core.coding import playbook
-from leanlab.core.coding.engineer import _engineer_prompt
+from leanlab.core.coding.engineer import Engineer
 
 
 class FakeUI:
@@ -14,13 +14,13 @@ class FakeUI:
 
 
 def test_engineer_prompt_includes_playbook():
-    p = _engineer_prompt("# spec", "coding", None, "ALWAYS use repository.py for DB access")
+    p = Engineer._prompt("# spec", "coding", None, "ALWAYS use repository.py for DB access")
     assert "ALWAYS use repository.py" in p
     assert "Project playbook" in p
 
 
 def test_engineer_prompt_without_playbook():
-    assert "Project playbook" not in _engineer_prompt("# spec", "coding", None, "")
+    assert "Project playbook" not in Engineer._prompt("# spec", "coding", None, "")
 
 
 def test_read_playbook_missing_then_present(tmp_path):
