@@ -293,6 +293,13 @@ nodes:
     parentId: coding
     sourcePath: leanlab/core/coding/git.py
     stereotype: control
+  - id: personas
+    kind: module
+    name: Personas
+    description: Configurable agent persona sets — resolves a role (engineer/reviewer/tech-lead, or worker/director/critic) to its prompt template shipped as package data.
+    parentId: coding
+    sourcePath: leanlab/core/coding/personas.py
+    stereotype: entity
 edges:
   - id: cli-invokes-loop
     from: leanlab-cli
