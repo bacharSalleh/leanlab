@@ -218,11 +218,11 @@ def test_isolation_catches_conftest_dependence(tmp_path):
 
 
 def test_clip_diff_marks_truncation():
-    from leanlab.core.coding.engineer import _clip_diff, _DIFF_LIMIT
-    assert _clip_diff("abc") == "abc"                       # short diffs untouched
-    out = _clip_diff("x" * (_DIFF_LIMIT + 500))
+    from leanlab.core.coding.engineer import ReviewPanel
+    assert ReviewPanel._clip_diff("abc") == "abc"          # short diffs untouched
+    out = ReviewPanel._clip_diff("x" * (ReviewPanel.DIFF_LIMIT + 500))
     assert "truncated" in out and "do NOT approve" in out
-    assert len(out) < _DIFF_LIMIT + 500                     # the tail was dropped
+    assert len(out) < ReviewPanel.DIFF_LIMIT + 500         # the tail was dropped
 
 
 class PanelRunner:
@@ -236,10 +236,10 @@ class PanelRunner:
 
 
 def test_panel_rejects_if_any_reviewer_rejects():
-    from leanlab.core.coding.engineer import _review_panel, _lenses_for
+    from leanlab.core.coding.engineer import ReviewPanel
     r = PanelRunner([{"approved": True, "score": 90, "feedback": ""},
                      {"approved": False, "score": 40, "feedback": "SQL injection in query()"}])
-    approved, score, fb, verdicts = _review_panel(r, "spec", "diff", "coding", _lenses_for(2))
+    approved, score, fb, verdicts = ReviewPanel(r, "coding", 2).review("spec", "diff")
     assert approved is False
     assert score == 40                                          # harshest score governs
     assert "SQL injection" in fb and "[spec-conformance]" in fb  # blocker labelled by its lens
@@ -247,17 +247,17 @@ def test_panel_rejects_if_any_reviewer_rejects():
 
 
 def test_panel_approves_only_when_all_approve():
-    from leanlab.core.coding.engineer import _review_panel, _lenses_for
+    from leanlab.core.coding.engineer import ReviewPanel
     r = PanelRunner([{"approved": True, "score": 90, "feedback": ""},
                      {"approved": True, "score": 80, "feedback": ""}])
-    approved, score, fb, _v = _review_panel(r, "spec", "diff", "coding", _lenses_for(2))
+    approved, score, fb, _v = ReviewPanel(r, "coding", 2).review("spec", "diff")
     assert approved is True and score == 80 and fb == ""
 
 
 def test_lenses_distinct_then_general():
-    from leanlab.core.coding.engineer import _lenses_for
-    assert _lenses_for(1) == [None]                         # single = general reviewer
-    names = [lens["name"] for lens in _lenses_for(3)]
+    from leanlab.core.coding.engineer import ReviewPanel
+    assert ReviewPanel(None, "coding", 1)._lenses() == [None]   # single = general reviewer
+    names = [lens["name"] for lens in ReviewPanel(None, "coding", 3)._lenses()]
     assert names == ["correctness", "spec-conformance", "security"]
 
 

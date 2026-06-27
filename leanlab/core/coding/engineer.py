@@ -18,7 +18,7 @@ from .board import log_event
 from .gate import run_gate
 from .git import Git
 from .locks import LockStore
-from .personas import spec_text
+from .personas import Personas, spec_text
 from .playbook import read_playbook, update_playbook
 
 _APPROVED = (True, "true", "yes", "True")
@@ -77,66 +77,71 @@ def _engineer_prompt(spec_md, persona_set, feedback, playbook=""):
     return base
 
 
-_DIFF_LIMIT = 40000
+class ReviewPanel:
+    """Adversarial review quorum: N reviewers, each a distinct lens; merge only if ALL approve.
 
-# Each panel reviewer attacks from a distinct angle — diversity catches what one lens misses.
-REVIEW_LENSES = [
-    {"name": "correctness",
-     "focus": "logic errors, off-by-one, wrong operators, integer division, edge cases, error paths"},
-    {"name": "spec-conformance",
-     "focus": "requirements stated in the spec that the locked tests do NOT check — find one the code gets wrong"},
-    {"name": "security",
-     "focus": "injection, path traversal, unsafe input handling, leaked secrets, resource exhaustion"},
-    {"name": "robustness",
-     "focus": "behaviour on bad/empty/huge input, concurrency, mutable shared state, failure recovery"},
-]
+    Score is the harshest (min); feedback aggregates every blocker, labelled by lens.
+    """
 
+    DIFF_LIMIT = 40000
 
-def _clip_diff(diff):
-    if len(diff) <= _DIFF_LIMIT:
-        return diff
-    return (diff[:_DIFF_LIMIT]
-            + f"\n…(diff truncated — {len(diff) - _DIFF_LIMIT} more chars not shown; "
-              "do NOT approve code you could not see)")
+    # Each panel reviewer attacks from a distinct angle — diversity catches what one lens misses.
+    LENSES = [
+        {"name": "correctness",
+         "focus": "logic errors, off-by-one, wrong operators, integer division, edge cases, error paths"},
+        {"name": "spec-conformance",
+         "focus": "requirements stated in the spec that the locked tests do NOT check — find one the code gets wrong"},
+        {"name": "security",
+         "focus": "injection, path traversal, unsafe input handling, leaked secrets, resource exhaustion"},
+        {"name": "robustness",
+         "focus": "behaviour on bad/empty/huge input, concurrency, mutable shared state, failure recovery"},
+    ]
 
+    def __init__(self, runner, persona_set="coding", reviewers=1):
+        self._runner = runner
+        self._personas = Personas(persona_set)
+        self._n = reviewers
 
-def _lenses_for(n):
-    """Lenses for a panel of n reviewers. n<=1 → one general reviewer (no extra focus)."""
-    if n <= 1:
-        return [None]
-    return [REVIEW_LENSES[i % len(REVIEW_LENSES)] for i in range(n)]
+    @staticmethod
+    def _clip_diff(diff):
+        if len(diff) <= ReviewPanel.DIFF_LIMIT:
+            return diff
+        return (diff[:ReviewPanel.DIFF_LIMIT]
+                + f"\n…(diff truncated — {len(diff) - ReviewPanel.DIFF_LIMIT} more chars not shown; "
+                  "do NOT approve code you could not see)")
 
+    def _lenses(self):
+        """Lenses for the panel. n<=1 → one general reviewer (no extra focus)."""
+        if self._n <= 1:
+            return [None]
+        return [self.LENSES[i % len(self.LENSES)] for i in range(self._n)]
 
-def _review_prompt(spec_md, diff, persona_set, lens=None):
-    body = spec_text("reviewer", persona_set)
-    if lens:
-        body += (f"\n\n## Your lens: {lens['name']}\nWeight your attack toward {lens['focus']}. "
-                 "Still reject any blocking defect you find outside this lens.")
-    return (body + "\n\n## Task spec\n" + spec_md
-            + "\n\n## The diff to review\n```diff\n" + _clip_diff(diff) + "\n```")
+    def _prompt(self, spec_md, diff, lens):
+        body = self._personas.text("reviewer")
+        if lens:
+            body += (f"\n\n## Your lens: {lens['name']}\nWeight your attack toward {lens['focus']}. "
+                     "Still reject any blocking defect you find outside this lens.")
+        return (body + "\n\n## Task spec\n" + spec_md
+                + "\n\n## The diff to review\n```diff\n" + self._clip_diff(diff) + "\n```")
 
-
-def _review_panel(runner, spec_md, diff, persona_set, lenses):
-    """Adversarial quorum: run one reviewer per lens. Approved only if ALL approve; score is the
-    harshest (min); feedback aggregates every blocker, labelled by lens. Returns
-    (approved, score, feedback, verdicts)."""
-    verdicts = []
-    for lens in lenses:
-        res = runner.run_structured(_review_prompt(spec_md, diff, persona_set, lens),
-                                    ["approved", "feedback"])
-        ok = res.ok and res.data.get("approved") in _APPROVED
-        try:
-            sc = float(res.data.get("score", 100)) if res.ok else 0.0
-        except (TypeError, ValueError):
-            sc = 0.0
-        fb = str(res.data.get("feedback", "")) if res.ok else "(review call failed)"
-        verdicts.append({"lens": lens["name"] if lens else "review",
-                         "approved": ok, "score": sc, "feedback": fb})
-    approved = bool(verdicts) and all(v["approved"] for v in verdicts)
-    score = min((v["score"] for v in verdicts), default=0.0)
-    feedback = "\n\n".join(f"[{v['lens']}] {v['feedback']}"
-                           for v in verdicts if not v["approved"] and v["feedback"])
-    return approved, score, feedback, verdicts
+    def review(self, spec_md, diff):
+        """Returns (approved, score, feedback, verdicts)."""
+        verdicts = []
+        for lens in self._lenses():
+            res = self._runner.run_structured(self._prompt(spec_md, diff, lens), ["approved", "feedback"])
+            ok = res.ok and res.data.get("approved") in _APPROVED
+            try:
+                sc = float(res.data.get("score", 100)) if res.ok else 0.0
+            except (TypeError, ValueError):
+                sc = 0.0
+            fb = str(res.data.get("feedback", "")) if res.ok else "(review call failed)"
+            verdicts.append({"lens": lens["name"] if lens else "review",
+                             "approved": ok, "score": sc, "feedback": fb})
+        approved = bool(verdicts) and all(v["approved"] for v in verdicts)
+        score = min((v["score"] for v in verdicts), default=0.0)
+        feedback = "\n\n".join(f"[{v['lens']}] {v['feedback']}"
+                               for v in verdicts if not v["approved"] and v["feedback"])
+        return approved, score, feedback, verdicts
 
 
 def build_task(repo, slug, *, runner=None, ui=None, gate_cmds=None,
@@ -193,12 +198,11 @@ def build_task(repo, slug, *, runner=None, ui=None, gate_cmds=None,
 
         _stage(wt)
         diff = _git(wt, "diff", "--cached").stdout
-        lenses = _lenses_for(reviewers)
-        msg = ("Reviewer is checking the diff…" if len(lenses) == 1
-               else f"{len(lenses)} reviewers are attacking the diff…")
+        panel = ReviewPanel(runner, persona_set, reviewers)
+        msg = ("Reviewer is checking the diff…" if reviewers <= 1
+               else f"{reviewers} reviewers are attacking the diff…")
         with ui.status(msg):
-            approved, score, review_fb, verdicts = _review_panel(
-                runner, spec_md, diff, persona_set, lenses)
+            approved, score, review_fb, verdicts = panel.review(spec_md, diff)
         log_event(repo, slug, {"event": "review", "n": attempt, "approved": bool(approved),
                                "score": score, "feedback": review_fb[:200],
                                "reviewers": [{"lens": v["lens"], "approved": v["approved"],

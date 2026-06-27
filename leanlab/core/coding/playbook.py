@@ -11,37 +11,60 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..loop import make_runner
-from .personas import spec_text
+from .events import EventLog
+from .personas import Personas
 
 
-def playbook_path(repo) -> Path:
-    return Path(repo) / ".leanlab" / "PLAYBOOK.md"
+class Playbook:
+    """The project's accumulated conventions/pitfalls (`.leanlab/PLAYBOOK.md`) — the lab's memory."""
+
+    def __init__(self, repo):
+        self._repo = Path(repo)
+
+    @property
+    def path(self):
+        return self._repo / ".leanlab" / "PLAYBOOK.md"
+
+    def read(self):
+        p = self.path
+        return p.read_text().strip() if p.exists() else ""
 
 
-def read_playbook(repo) -> str:
-    p = playbook_path(repo)
-    return p.read_text().strip() if p.exists() else ""
+class TechLead:
+    """After a merge, studies the recent changes and rewrites the PLAYBOOK via Claude."""
 
-
-def update_playbook(repo, *, slug=None, runner=None, ui=None) -> None:
-    """Have the tech-lead study recent changes and rewrite .leanlab/PLAYBOOK.md.
-
-    `slug` ties the update to the task that triggered it, so it shows on that task's
-    timeline as the tech-lead's step in the loop.
-    """
-    runner = runner or make_runner(Path(repo))
-    prompt = (
-        spec_text("techlead", "coding") + "\n\n"
+    _TASK = (
         "Study the recent merged changes (use `git log -p -5` and read key files), then write a "
         "concise `.leanlab/PLAYBOOK.md`: conventions to follow, the architecture map, and "
         "pitfalls already hit, as guidance for the next tasks. Create the `.leanlab` directory if "
         "needed. Write ONLY that file, then stop."
     )
-    if ui is not None:
-        with ui.status("Tech-lead is updating the PLAYBOOK…"):
+
+    def __init__(self, runner=None, ui=None, persona_set="coding"):
+        self._runner = runner
+        self._ui = ui
+        self._personas = Personas(persona_set)
+
+    def refresh(self, repo, slug=None):
+        """Rewrite the playbook. `slug` ties it to the task so it shows on that task's timeline."""
+        runner = self._runner or make_runner(Path(repo))
+        prompt = self._personas.text("techlead") + "\n\n" + self._TASK
+        if self._ui is not None:
+            with self._ui.status("Tech-lead is updating the PLAYBOOK…"):
+                runner.run_plain(prompt)
+        else:
             runner.run_plain(prompt)
-    else:
-        runner.run_plain(prompt)
-    if slug:
-        from .board import log_event          # lazy: board imports playbook, so import here
-        log_event(repo, slug, {"event": "playbook"})
+        if slug:
+            EventLog(repo).log(slug, {"event": "playbook"})
+
+
+def playbook_path(repo) -> Path:
+    return Playbook(repo).path
+
+
+def read_playbook(repo) -> str:
+    return Playbook(repo).read()
+
+
+def update_playbook(repo, *, slug=None, runner=None, ui=None) -> None:
+    TechLead(runner=runner, ui=ui).refresh(repo, slug)
