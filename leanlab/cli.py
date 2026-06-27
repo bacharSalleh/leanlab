@@ -20,7 +20,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .core.init import run_init
+from .core.init import InitArchitect
 
 
 def _version() -> str:
@@ -68,6 +68,14 @@ def _append_claude_md(project: Path) -> bool:
     return True
 
 
+def _coding_gate_cmds(args):
+    """Assemble the gate command list shared by `build` and `gate` from the CLI flags."""
+    cmds = [{"name": "tests", "cmd": args.test_cmd or "pytest -q"}]
+    if args.lint_cmd:
+        cmds.append({"name": "lint", "cmd": args.lint_cmd})
+    return cmds
+
+
 def cmd_init(args):
     if args.for_agent:
         dest = _install_agent_skill(Path.cwd())
@@ -91,26 +99,25 @@ def cmd_init(args):
     if not description:
         print("ERROR: a task description is required.", file=sys.stderr)
         sys.exit(1)
-    run_init(lab, args.name, description, yes=args.yes)
+    InitArchitect().init(lab, args.name, description, yes=args.yes)
 
 
 def cmd_spec(args):
-    from .core.coding.spec import spec_task
-    res = spec_task(Path.cwd(), args.task, yes=args.yes)
+    from .core.coding.spec import SpecWriter
+    res = SpecWriter().spec(Path.cwd(), args.task, yes=args.yes)
     if res:
         print(f"slug: {Path(res['worktree']).name}")     # plain line for an agent to parse
     sys.exit(0 if res else 1)
 
 
 def cmd_build(args):
-    from .core.coding.engineer import build_task
-    cmds = [{"name": "tests", "cmd": args.test_cmd or "pytest -q"}]
-    if args.lint_cmd:
-        cmds.append({"name": "lint", "cmd": args.lint_cmd})
-    res = build_task(Path.cwd(), args.slug, gate_cmds=cmds, persona_set=args.persona_set,
-                     max_attempts=args.max_attempts, playbook=not args.no_playbook,
-                     min_quality=args.min_quality, isolate=not args.no_isolate,
-                     accept_cmd=args.accept_cmd, reviewers=args.reviewers)
+    from .core.coding.engineer import Engineer
+    from .core.coding.gate import Gate
+    eng = Engineer(gate=Gate(_coding_gate_cmds(args)), persona_set=args.persona_set,
+                   reviewers=args.reviewers, max_attempts=args.max_attempts,
+                   min_quality=args.min_quality, playbook=not args.no_playbook,
+                   isolate=not args.no_isolate, accept_cmd=args.accept_cmd)
+    res = eng.build(Path.cwd(), args.slug)
     sys.exit(0 if (res and res.get("merged")) else 1)
 
 
@@ -126,38 +133,33 @@ def cmd_board(args):
 
 
 def cmd_gate(args):
-    from .core.coding.gate import run_gate, report
+    from .core.coding.gate import Gate, report
     wt = labs_dir() / "worktrees" / args.slug
     if not wt.is_dir():
         print(f"ERROR: no worktree at {wt} — run `leanlab spec` first.", file=sys.stderr)
         sys.exit(1)
-    cmds = [{"name": "tests", "cmd": args.test_cmd or "pytest -q"}]
-    if args.lint_cmd:
-        cmds.append({"name": "lint", "cmd": args.lint_cmd})
-    res = run_gate(wt, cmds)
+    res = Gate(_coding_gate_cmds(args)).run(wt)
     report(res)
     sys.exit(0 if res.passed else 1)
 
 
 def cmd_check(args):
-    from .core.doctor import check_lab, RichReport, ok
-    lab = _resolve_lab(args.lab)
-    checks = check_lab(lab)
+    from .core.doctor import LabDoctor, RichReport, ok
+    checks = LabDoctor(_resolve_lab(args.lab)).check()
     RichReport().report(checks)
     sys.exit(0 if ok(checks) else 1)
 
 
 def cmd_fix(args):
-    from .core.doctor import fix_lab
-    lab = _resolve_lab(args.lab)
-    sys.exit(0 if fix_lab(lab) else 1)
+    from .core.doctor import LabDoctor
+    sys.exit(0 if LabDoctor(_resolve_lab(args.lab)).fix() else 1)
 
 
 def cmd_run(args):
     lab = _resolve_lab(args.lab)
     if not args.skip_checks and not args.dry_run:
-        from .core.doctor import check_lab, RichReport, ok
-        checks = check_lab(lab)
+        from .core.doctor import LabDoctor, RichReport, ok
+        checks = LabDoctor(lab).check()
         if not ok(checks):
             RichReport().report(checks)
             print(f"\nRun blocked by failed checks. Fix them with:  leanlab fix {args.lab}\n"
