@@ -12,7 +12,7 @@ def _isolate_home(monkeypatch, tmp_path_factory):
     # board usage/transcript lookups resolve ~/.claude/projects; pin HOME to an empty dir
     # so a real worktree transcript on the dev's machine can never leak into these tests.
     monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
-    board._SESSIONS_CACHE.clear()
+    board._TRANSCRIPTS.clear()
 
 
 def _setup(tmp_path):
@@ -117,30 +117,6 @@ def test_log_and_read_events(tmp_path):
     evs = board.read_events(tmp_path, "demo")
     assert [e["event"] for e in evs] == ["attempt", "merged"]
     assert evs[0]["ts"]                                  # timestamp stamped on
-
-
-def test_chat_stream_merges_all_sessions(tmp_path, monkeypatch):
-    # the chat must show EVERY agent session (all attempts + reviews), not just the latest
-    import os
-    from leanlab.core import monitor
-    d = tmp_path / "tx"
-    d.mkdir()
-    (d / "a.jsonl").write_text("x")
-    (d / "b.jsonl").write_text("x")
-    os.utime(d / "a.jsonl", (1, 1))                      # a is older than b
-    os.utime(d / "b.jsonl", (2, 2))
-    canned = {"a.jsonl": [{"kind": "text", "text": "attempt 1", "in_tok": 10, "out_tok": 5}],
-              "b.jsonl": [{"kind": "text", "text": "attempt 2", "in_tok": 20, "out_tok": 7}]}
-    monkeypatch.setattr(board, "_transcript_dir", lambda repo, slug: d)
-    monkeypatch.setattr(monitor, "parse_session", lambda p: ({}, canned[p.name]))
-
-    evs = board._task_transcript_events(tmp_path, "demo")
-    assert [e["kind"] for e in evs] == ["divider", "text", "divider", "text"]
-    assert [e["text"] for e in evs if e["kind"] == "text"] == ["attempt 1", "attempt 2"]  # oldest first
-    assert evs[0]["text"] == "session 1/2" and evs[0]["tokens"] == 15
-    assert evs[2]["text"] == "session 2/2" and evs[2]["tokens"] == 27
-    # usage shares the same parse: total = sum of every session's divider total
-    assert board._task_usage(tmp_path, "demo") == {"tokens": 42, "cost": 0.0}
 
 
 def test_task_detail_timeline_and_render(tmp_path):

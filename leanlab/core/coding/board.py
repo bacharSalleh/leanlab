@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .events import EventLog
 from .playbook import read_playbook
+from .transcripts import Transcripts
 
 _STATUS = {"merged": "#3fb950", "failed": "#f85149", "spec'd": "#d29922", "building": "#58a6ff"}
 
@@ -38,65 +39,27 @@ def read_events(repo, slug):
 
 
 # --- agent chat (transcripts) ----------------------------------------------
+# One Transcripts per repo so its parse cache survives across SSE polls.
+_TRANSCRIPTS = {}
+
+
+def _transcripts(repo):
+    key = str(Path(repo).resolve())
+    if key not in _TRANSCRIPTS:
+        _TRANSCRIPTS[key] = Transcripts(repo)
+    return _TRANSCRIPTS[key]
+
+
 def _transcript_dir(repo, slug):
-    """The Claude transcript dir for a task's worktree, or None."""
-    wt = Path(repo) / ".leanlab" / "worktrees" / slug
-    base = Path.home() / ".claude" / "projects"
-    if not base.is_dir():
-        return None
-    d = base / str(wt.resolve()).replace("/", "-")
-    if d.is_dir():
-        return d
-    matches = sorted(base.glob(f"*worktrees-{slug}"))   # specific tail — avoids other projects
-    return matches[-1] if matches else None
-
-
-_SESSIONS_CACHE = {}
-
-
-def _parsed_sessions(d):
-    """[(path, events)] for every session in `d`, oldest first — parsed ONCE and cached by
-    the dir's (name, mtime) signature. The SSE loop polls task detail every second; without
-    this each poll would re-parse every transcript file."""
-    sessions = sorted(d.glob("*.jsonl"))
-    sig = tuple((p.name, p.stat().st_mtime) for p in sessions)
-    cached = _SESSIONS_CACHE.get(str(d))
-    if cached and cached[0] == sig:
-        return cached[1]
-    from ..monitor import parse_session            # reuse the metric dashboard's parser
-    parsed = [(p, parse_session(p)[1])
-              for p in sorted(sessions, key=lambda p: p.stat().st_mtime)]
-    _SESSIONS_CACHE[str(d)] = (sig, parsed)
-    return parsed
+    return _transcripts(repo)._dir(slug)
 
 
 def _task_transcript_events(repo, slug):
-    """Every agent session's events for a task, oldest first — one session per claude call,
-    so all build attempts and reviews show, not just the latest. A `divider` event marks
-    each session boundary."""
-    d = _transcript_dir(repo, slug)
-    if not d:
-        return []
-    runs = [events for _p, events in _parsed_sessions(d) if events]
-    out = []
-    for i, events in enumerate(runs, 1):
-        tok = sum((e.get("in_tok") or 0) + (e.get("out_tok") or 0) for e in events)
-        out.append({"kind": "divider", "text": f"session {i}/{len(runs)}", "tokens": tok})
-        out.extend(events)
-    return out
+    return _transcripts(repo).events(slug)
 
 
 def _task_usage(repo, slug):
-    """Total tokens + cost across ALL agent sessions for a task."""
-    d = _transcript_dir(repo, slug)
-    if not d:
-        return {"tokens": 0, "cost": 0.0}
-    tokens = cost = 0
-    for _p, events in _parsed_sessions(d):
-        for e in events:
-            tokens += (e.get("in_tok") or 0) + (e.get("out_tok") or 0)
-            cost += e.get("cost") or 0
-    return {"tokens": tokens, "cost": round(cost, 4)}
+    return _transcripts(repo).usage(slug)
 
 
 # --- state builders ---------------------------------------------------------
