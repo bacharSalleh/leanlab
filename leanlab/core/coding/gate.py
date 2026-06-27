@@ -32,20 +32,30 @@ class GateResult:
         return [c for c in self.checks if not c.ok]
 
 
+class Gate:
+    """Runs the configured commands in a worktree; the change passes only if all exit 0."""
+
+    def __init__(self, commands=None, *, timeout=600):
+        self._commands = commands or DEFAULT_GATE
+        self._timeout = timeout
+
+    def run(self, worktree) -> GateResult:
+        wt = Path(worktree)
+        checks = []
+        for step in self._commands:
+            name, cmd = step["name"], step["cmd"]
+            try:
+                proc = subprocess.run(shlex.split(cmd), cwd=wt, capture_output=True,
+                                      text=True, timeout=self._timeout)
+                out = (proc.stdout + ("\n" + proc.stderr if proc.stderr else "")).strip()
+                checks.append(GateCheck(name, proc.returncode == 0, proc.returncode, out))
+            except Exception as e:  # noqa: BLE001 — couldn't even run it
+                checks.append(GateCheck(name, False, -1, f"could not run `{cmd}`: {e}"))
+        return GateResult(passed=all(c.ok for c in checks), checks=checks)
+
+
 def run_gate(worktree, gate_cmds=None, *, timeout=600) -> GateResult:
-    """Run each gate command in the worktree; the change passes only if all exit 0."""
-    wt = Path(worktree)
-    checks = []
-    for step in (gate_cmds or DEFAULT_GATE):
-        name, cmd = step["name"], step["cmd"]
-        try:
-            proc = subprocess.run(shlex.split(cmd), cwd=wt, capture_output=True,
-                                  text=True, timeout=timeout)
-            out = (proc.stdout + ("\n" + proc.stderr if proc.stderr else "")).strip()
-            checks.append(GateCheck(name, proc.returncode == 0, proc.returncode, out))
-        except Exception as e:  # noqa: BLE001 — couldn't even run it
-            checks.append(GateCheck(name, False, -1, f"could not run `{cmd}`: {e}"))
-    return GateResult(passed=all(c.ok for c in checks), checks=checks)
+    return Gate(gate_cmds, timeout=timeout).run(worktree)
 
 
 def report(result: GateResult, console=None):

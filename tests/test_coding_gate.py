@@ -2,7 +2,7 @@
 
 import sys
 
-from leanlab.core.coding.gate import run_gate
+from leanlab.core.coding.gate import Gate, run_gate
 
 
 def _wt(tmp_path, test_body):
@@ -45,3 +45,11 @@ def test_gate_handles_unrunnable_command(tmp_path):
     res = run_gate(wt, [{"name": "tests", "cmd": "this_binary_does_not_exist_xyz --q"}])
     assert res.passed is False
     assert "could not run" in res.checks[0].output
+
+
+def test_gate_class_holds_its_commands(tmp_path):
+    wt = _wt(tmp_path, "def test_ok():\n    assert True\n")
+    gate = Gate([{"name": "tests", "cmd": PYTEST}])
+    assert gate.run(wt).passed is True
+    wt2 = _wt(tmp_path / "b", "def test_bad():\n    assert False\n")
+    assert gate.run(wt2).passed is False         # same Gate, reused across worktrees
