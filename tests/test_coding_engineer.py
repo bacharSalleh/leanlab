@@ -217,6 +217,15 @@ def test_isolation_catches_conftest_dependence(tmp_path):
     assert ok is False
 
 
+def test_isolation_rejects_when_no_tests_collected(tmp_path):
+    from leanlab.core.coding import engineer
+    # The acceptance file collects zero tests (exit 5) — can't prove honesty, so reject.
+    (tmp_path / "test_acc.py").write_text("x = 1  # no test functions here\n")
+    ok, _ = engineer.Engineer._isolated_acceptance(
+        tmp_path, {"tests": [{"path": "test_acc.py"}]}, f"{sys.executable} -m pytest --noconftest -q")
+    assert ok is False
+
+
 def test_clip_diff_marks_truncation():
     from leanlab.core.coding.engineer import ReviewPanel
     assert ReviewPanel._clip_diff("abc") == "abc"          # short diffs untouched

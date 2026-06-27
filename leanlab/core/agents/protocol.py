@@ -9,9 +9,37 @@ the "agent must return valid structured output" rule lives.
 from __future__ import annotations
 
 import json
-import re
 
 from .port import AgentResult, AgentRunner, AgentTransport
+
+
+def _balanced_objects(text):
+    """Yield every top-level {...} span in text, brace-balanced and string-aware.
+
+    Unlike a flat `{[^{}]*}` regex, this matches NESTED objects (e.g. a spec reply
+    with a `tests` array of objects) even when the agent wraps them in prose or fences.
+    """
+    depth = start = 0
+    in_str = esc = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0:
+                yield text[start:i + 1]
 
 
 def extract_json(text: str, required_keys) -> dict | None:
@@ -28,9 +56,9 @@ def extract_json(text: str, required_keys) -> dict | None:
         candidates.append(json.loads(text))
     except json.JSONDecodeError:
         pass
-    for m in re.finditer(r"\{[^{}]*\}", text, re.DOTALL):
+    for span in _balanced_objects(text):
         try:
-            candidates.append(json.loads(m.group(0)))
+            candidates.append(json.loads(span))
         except json.JSONDecodeError:
             continue
     for obj in reversed(candidates):

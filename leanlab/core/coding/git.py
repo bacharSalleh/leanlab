@@ -60,8 +60,13 @@ class Git:
     def merge(self, repo, wt, branch, slug):
         """Commit the worktree and merge its branch into the repo. Returns (ok, error)."""
         self.stage(wt)
+        # The engineer may have committed its own work, so a "nothing to commit" here is fine;
+        # what matters is whether the branch actually carries changes to merge (checked below).
         self.run(wt, "commit", "-m", f"leanlab: {slug}")
         r = self.run(repo, "merge", "--no-ff", "-m", f"leanlab: merge {slug}", branch)
         if r.returncode != 0:
             return False, (r.stderr or r.stdout).strip()
+        if "up to date" in (r.stdout + r.stderr).lower():
+            # Nothing was merged — the branch had no changes over the base. Not a success.
+            return False, "nothing to merge — the branch carried no changes"
         return True, ""

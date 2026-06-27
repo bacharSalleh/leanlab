@@ -34,7 +34,7 @@ _DEFAULT_PRICE = (15.0, 75.0, 1.50)
 class Dashboard:
     """Builds the live monitor state for one metric lab: results, sessions, and the agent stream."""
 
-    _EXP_RE = re.compile(r"experiments/[A-Za-z0-9_]+\.py")
+    _EXP_RE = re.compile(r"""experiments/[^\s"']+\.py""")
 
     def __init__(self, lab):
         self._lab = Path(lab)

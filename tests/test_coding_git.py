@@ -31,3 +31,12 @@ def test_create_worktree_and_merge(tmp_path):
     ok, err = git.merge(r, wt, branch, "demo")
     assert ok is True and err == ""
     assert (r / "impl.py").exists()                      # merged into the main worktree
+
+
+def test_merge_with_no_changes_is_not_success(tmp_path):
+    # An engineer that changed nothing must NOT be reported as a successful merge.
+    git = Git()
+    r = _repo(tmp_path)
+    wt, branch = git.create_worktree(r, "empty")         # branch has no commits over main
+    ok, err = git.merge(r, wt, branch, "empty")
+    assert ok is False and "nothing to merge" in err

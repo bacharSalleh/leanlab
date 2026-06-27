@@ -139,10 +139,17 @@ class Engineer:
         try:
             proc = subprocess.run(shlex.split(accept_cmd) + paths, cwd=Path(wt),
                                   capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired as e:
+            # A hung isolation run is suspicious, not a free pass — fail closed.
+            return False, f"(isolation timed out — treated as not honest: {e})"
         except Exception as e:  # noqa: BLE001
             return True, f"(isolation skipped: {e})"
         out = (proc.stdout + ("\n" + proc.stderr if proc.stderr else "")).strip()
-        return (proc.returncode != 1), out
+        # exit 1 = the pristine tests failed; exit 5 = no tests collected. The restored
+        # acceptance tests MUST collect and pass on their own — either outcome means we
+        # could not prove the change honest, so reject. Other exits (2/3/4) mean we could
+        # not isolate cleanly, so we don't block on them.
+        return (proc.returncode not in (1, 5)), out
 
     def _record(self, repo, rec):
         """Append a build outcome so `leanlab board` can show it."""
