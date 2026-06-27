@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .events import EventLog
 from .playbook import read_playbook
 
 _STATUS = {"merged": "#3fb950", "failed": "#f85149", "spec'd": "#d29922", "building": "#58a6ff"}
@@ -25,30 +26,16 @@ _STATUS = {"merged": "#3fb950", "failed": "#f85149", "spec'd": "#d29922", "build
 
 # --- structured event log (the timeline) ------------------------------------
 def _events_path(repo, slug):
-    return Path(repo) / ".leanlab" / "events" / f"{slug}.jsonl"
+    return EventLog(repo)._path(slug)
 
 
 def log_event(repo, slug, rec):
     """Append one build event for a task (used by spec/build to feed the timeline)."""
-    p = _events_path(repo, slug)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("a") as f:
-        f.write(json.dumps({**rec, "ts": datetime.now(timezone.utc).isoformat()}) + "\n")
+    EventLog(repo).log(slug, rec)
 
 
 def read_events(repo, slug):
-    p = _events_path(repo, slug)
-    if not p.exists():
-        return []
-    out = []
-    for line in p.read_text().splitlines():
-        line = line.strip()
-        if line:
-            try:
-                out.append(json.loads(line))
-            except ValueError:
-                pass
-    return out
+    return EventLog(repo).read(slug)
 
 
 # --- agent chat (transcripts) ----------------------------------------------
