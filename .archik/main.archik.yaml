@@ -265,6 +265,34 @@ nodes:
     sourcePath: frontend/src
     status: active
     stereotype: boundary
+  - id: event-log
+    kind: module
+    name: Event log
+    description: Append-only per-task event log (.leanlab/events/<slug>.jsonl) — the board timeline's source; spec/build/tech-lead write, the board reads.
+    parentId: coding
+    sourcePath: leanlab/core/coding/events.py
+    stereotype: entity
+  - id: lock-store
+    kind: module
+    name: Lock store
+    description: "Out-of-worktree store for the locked acceptance tests (sha256): write, load, restore-pristine, tamper-check. The frozen 'done' criteria."
+    parentId: coding
+    sourcePath: leanlab/core/coding/locks.py
+    stereotype: entity
+  - id: transcripts
+    kind: module
+    name: Transcripts
+    description: Reads a task's Claude transcripts (~/.claude) — merged session events + token/cost usage, cached per (name, mtime).
+    parentId: coding
+    sourcePath: leanlab/core/coding/transcripts.py
+    stereotype: entity
+  - id: git
+    kind: adapter
+    name: Git
+    description: Adapter over the git CLI — worktree create, branch, stage, merge. Isolates each coding task in its own worktree.
+    parentId: coding
+    sourcePath: leanlab/core/coding/git.py
+    stereotype: control
 edges:
   - id: cli-invokes-loop
     from: leanlab-cli
