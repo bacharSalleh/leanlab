@@ -13,7 +13,6 @@ import mimetypes
 import sys
 import time
 import webbrowser
-from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
