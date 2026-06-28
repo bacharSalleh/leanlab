@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+- **Retired the coding lab.** Deleted `leanlab/core/coding/*` (spec-writer,
+  engineer, gate, reviewer panel, tech-lead/playbook, board, git/locks/events/
+  transcripts), the React board (`frontend/` + `board_dist`), the coding CLI
+  subcommands (`spec`, `build`, `gate`, `clean`, `board`) and `init --for-agent`,
+  the coding agent personas, and all coding tests/docs/diagrams. leanlab is now
+  purely the **experiment-optimization lab** (Worker/Director/Critic vs a frozen
+  evaluator, with the live dashboard). The coding workflow now lives in
+  superpowers; its feature-trace board moved to archik.
+- Updated the archik model to match: 31→16 nodes, 36→18 edges, coding use
+  cases/slices/seqs/traces removed. `archik validate`/`drift`/`trace` clean
+  (8/8 slices full).
+
 ## [0.2.4] - 2026-06-27
 
 ### Changed

@@ -102,7 +102,7 @@ class InitArchitect:
     without Claude or a real terminal.
     """
 
-    def __init__(self, runner=None, ui=None):
+    def  __init__(self, runner=None, ui=None):
         self._runner = runner
         self._ui = ui or RichUI()
 
