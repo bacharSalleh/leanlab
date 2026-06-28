@@ -99,46 +99,6 @@ needs its own `pyproject.toml`.
 
 ---
 
-## Coding lab (run inside a git repo)
-
-A different kind of lab: agents do **coding tasks** on your repo, judged by **tests** (not a
-metric). Each task is isolated in a git worktree; passing, reviewed changes merge to main; the
-lab keeps a PLAYBOOK so it gets better at your project over time.
-
-```bash
-leanlab spec "create a /health endpoint"   # spec-writer drafts + LOCKS acceptance tests in a worktree
-leanlab gate <slug>                         # run the pass/fail gate (tests + lint) on that worktree
-leanlab build <slug>                        # engineer ⇄ gate ⇄ reviewer → merge → tech-lead updates PLAYBOOK
-leanlab board                               # live dashboard: task status + the PLAYBOOK
-```
-
-| Command | What it does | Costs Claude? |
-|---------|--------------|---------------|
-| `spec "<task>"` | Claude writes a spec + acceptance tests; you approve; they're locked + hashed | a little |
-| `gate <slug>` | run the deterministic gate on the task's worktree | no |
-| `build <slug>` | the engineer loop: implement → gate → review → merge (`--persona-set`, `--max-attempts`, `--no-playbook`) | **yes** |
-| `board` | live coding dashboard | no |
-
-The `<slug>` is the task's folder name under `.leanlab/worktrees/` (e.g. `create-a-health-endpoint`).
-Honesty: the acceptance tests are locked **and** hashed — if the engineer alters them, the build is rejected.
-
-## Let Claude Code drive leanlab
-
-Install a **skill** so Claude Code (in your project) knows how to use leanlab — then you just talk
-to Claude Code and it specs/builds/merges through the honest gate:
-
-```bash
-cd ~/my-project
-leanlab init --for-agent      # writes .claude/skills/leanlab/SKILL.md + appends guidance to CLAUDE.md
-```
-
-It installs the skill **and** appends a short "use leanlab for coding tasks" block to your
-`CLAUDE.md` (idempotent — safe to re-run), so coding work routes through leanlab by default.
-
-Now: *"Claude, use leanlab to add a /health endpoint."* → Claude runs `leanlab spec "…" --yes`,
-then `leanlab build <slug>`, and reports the merge. The `--yes` flags make `spec`/`init` headless
-(no interactive prompt) so the agent can run them.
-
 ## Quick reference
 
 | Command | What | Costs Claude? |

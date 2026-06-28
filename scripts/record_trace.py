@@ -9,15 +9,12 @@ each slice through its real code path with light fakes and captures what flowed.
     uv run python scripts/record_trace.py
 
 Writes .archik/traces/<usecase>.<slice>.archik.trace.json for each slice, then validates.
-build-task is bound to its seq; the rest are standalone traces.
 """
 
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
-import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -25,13 +22,7 @@ from pathlib import Path
 
 from leanlab.core import doctor, loop
 from leanlab.core.agents import StructuredRunner
-from leanlab.core.agents.port import AgentResult, AgentTransport
-from leanlab.core.coding.board import Board
-from leanlab.core.coding.engineer import Engineer
-from leanlab.core.coding.events import EventLog
-from leanlab.core.coding.gate import Gate
-from leanlab.core.coding.git import Git
-from leanlab.core.coding.spec import SpecWriter
+from leanlab.core.agents.port import AgentTransport
 from leanlab.core.doctor import LabDoctor
 from leanlab.core.init import InitArchitect
 from leanlab.core.loop import ExperimentLoop, Lab, ResultsStore
@@ -57,20 +48,6 @@ def write_trace(use_case, slice_id, steps, seq_file=None):
     return f"{use_case}/{slice_id} ({len(steps)} steps)"
 
 
-def git(repo, *args):
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
-
-
-def git_repo(path):
-    path.mkdir(parents=True, exist_ok=True)
-    git(path, "init", "-q")
-    git(path, "config", "user.email", "t@example.com")
-    git(path, "config", "user.name", "leanlab")
-    (path / "README.md").write_text("demo\n")
-    git(path, "add", "-A")
-    git(path, "commit", "-q", "-m", "init")
-
-
 class FakeTransport(AgentTransport):
     def __init__(self, replies):
         self._replies = list(replies)
@@ -86,91 +63,6 @@ class QuietUI:
 
     def __getattr__(self, _n):
         return lambda *a, **k: None
-
-
-# --- build-task (bound to its seq) -----------------------------------------
-def rec_build_task():
-    task, slug = "add a /health endpoint returning 200", "add-health-endpoint-returning-200"
-    acc = "from pathlib import Path\n\n\ndef test_impl():\n    assert Path('impl.py').exists()\n"
-
-    class Dev:
-        def __init__(self, wt):
-            self.wt = wt
-
-        def run_plain(self, _p):
-            (self.wt / "impl.py").write_text("def health():\n    return 200\n")
-
-        def run_structured(self, _p, _k, session=None):
-            return AgentResult(data={"approved": True, "score": 95, "feedback": "clean"}, session_id="s")
-
-    with tempfile.TemporaryDirectory() as tmp:
-        repo = Path(tmp) / "repo"
-        git_repo(repo)
-        wt, _b = Git().create_worktree(repo, slug)
-        (wt / "SPEC.md").write_text(f"# Spec\n\n{task}\n")
-        (wt / "tests").mkdir(exist_ok=True)
-        (wt / "tests" / "test_acc.py").write_text(acc)
-        (wt / "tests" / "test_acc.py").chmod(0o444)
-        locks = repo / ".leanlab" / "locks"
-        locks.mkdir(parents=True, exist_ok=True)
-        (locks / f"{slug}.json").write_text(json.dumps({"tests": [
-            {"path": "tests/test_acc.py", "content": acc, "sha256": hashlib.sha256(acc.encode()).hexdigest()}]}))
-        res = Engineer(runner=Dev(wt), ui=QuietUI(),
-                       gate=Gate([{"name": "tests", "cmd": f"{PY} -m pytest -q"}]),
-                       accept_cmd=f"{PY} -m pytest --noconftest -q", max_attempts=3, reviewers=1,
-                       playbook=False).build(repo, slug)
-        ev = EventLog(repo).read(slug)
-    a = next((e for e in ev if e["event"] == "attempt"), {})
-    r = next((e for e in ev if e["event"] == "review"), {})
-    steps = [
-        {"id": "m-build", "from": "cli", "to": "eng", "label": "build(task)",
-         "data": {"in": {"task": task, "slug": slug, "reviewers": 1, "max_attempts": 3}}},
-        {"id": "m-gate-ret", "from": "gate", "to": "eng", "label": "pass | fail",
-         "data": {"out": {"passed": a.get("gate_passed"), "failures": a.get("failures", [])}}},
-        {"id": "m-honest-ret", "from": "gate", "to": "eng", "label": "honest | tampered / gamed",
-         "data": {"out": "honest (tests untouched; pass without engineer fixtures)"}},
-        {"id": "m-review-ret", "from": "rev", "to": "eng", "label": "quorum: all approved | changes requested",
-         "data": {"out": {"approved": r.get("approved"), "score": r.get("score")}}},
-        {"id": "m-merge", "from": "eng", "to": "eng", "label": "commit + merge branch into main",
-         "data": {"out": {"branch": res["branch"]}}},
-        {"id": "m-done", "from": "eng", "to": "cli", "label": "merged — task complete",
-         "data": {"out": {"merged": res["merged"], "attempts": res["attempts"], "quality": res["quality"]}}},
-    ]
-    return write_trace("build-task", "implement-to-green", steps, ".archik/build-task.archik.seq.yaml")
-
-
-# --- spec-task -------------------------------------------------------------
-def rec_spec_task():
-    task = "add a /health endpoint returning 200"
-    spec_md = "# Spec\n\nAdd a `/health` route returning HTTP 200 with body `ok`."
-    test_src = "def test_health(client):\n    assert client.get('/health').status_code == 200\n"
-
-    class R:
-        def run_structured(self, _p, _k, session=None):
-            return AgentResult(data={"spec_md": spec_md,
-                                     "tests": [{"path": "tests/test_health.py", "content": test_src}]},
-                               session_id="s")
-
-        def run_plain(self, _p):
-            pass
-
-    with tempfile.TemporaryDirectory() as tmp:
-        repo = Path(tmp) / "repo"
-        git_repo(repo)
-        res = SpecWriter(runner=R(), ui=QuietUI()).spec(repo, task, yes=True)
-    sha = hashlib.sha256(test_src.encode()).hexdigest()
-    steps = [
-        {"id": "m-spec", "from": "cli", "to": "spec", "label": "spec(task)", "data": {"in": {"task": task}}},
-        {"id": "m-draft-ret", "from": "port", "to": "spec", "label": "spec + tests",
-         "data": {"out": {"spec_md": spec_md, "tests": res["test_paths"]}}},
-        {"id": "m-write", "from": "spec", "to": "tests", "label": "write spec + acceptance tests into the worktree",
-         "data": {"out": {"tests": res["test_paths"]}}},
-        {"id": "m-lock", "from": "spec", "to": "tests", "label": "lock acceptance tests read-only",
-         "data": {"out": {"locked": res["test_paths"], "sha256": sha[:12] + "…"}}},
-        {"id": "m-done", "from": "spec", "to": "cli", "label": "locked — ready for the engineer",
-         "data": {"out": {"branch": res["branch"]}}},
-    ]
-    return write_trace("spec-task", "draft-and-lock-acceptance", steps, ".archik/spec-task.archik.seq.yaml")
 
 
 # --- init-lab (two slices from one run) ------------------------------------
@@ -358,26 +250,7 @@ def rec_diagnose_fix():
     ])
 
 
-# --- watch-progress (coding-board, metric-dashboard) -----------------------
-def rec_coding_board():
-    with tempfile.TemporaryDirectory() as tmp:
-        repo = Path(tmp)
-        (repo / ".leanlab" / "worktrees" / "add-health").mkdir(parents=True)
-        (repo / ".leanlab" / "worktrees" / "add-health" / "SPEC.md").write_text("# Spec\n\nAdd /health.")
-        (repo / ".leanlab" / "coding-results.jsonl").write_text(
-            json.dumps({"slug": "add-health", "merged": True, "attempts": 2}) + "\n"
-            + json.dumps({"slug": "fix-bug", "merged": False, "attempts": 4}) + "\n")
-        st = Board(repo).state()
-    return write_trace("watch-progress", "coding-board", [
-        {"from": "developer", "to": "coding-board", "label": "open the board (GET /api/state)",
-         "data": {"in": {"repo": "my-repo"}}},
-        {"from": "coding-board", "to": "results-store", "label": "read worktrees + results + events",
-         "data": {"out": {"tasks": [{"slug": t["slug"], "status": t["status"]} for t in st["tasks"]]}}},
-        {"from": "coding-board", "to": "developer", "label": "render the board",
-         "data": {"out": {"totals": st["totals"]}}},
-    ])
-
-
+# --- watch-progress (metric-dashboard) -------------------------------------
 def rec_metric_dashboard():
     with tempfile.TemporaryDirectory() as tmp:
         lab, cfg, (e1, e2) = _metric_lab(tmp, [("a_01.py", 0.42), ("b_02.py", 0.30)])
@@ -396,10 +269,10 @@ def rec_metric_dashboard():
 
 
 RECORDERS = [
-    rec_build_task, rec_spec_task, rec_init_lab,
+    rec_init_lab,
     rec_run_score, rec_run_rank, rec_run_fix,
     rec_diagnose_check, rec_diagnose_fix,
-    rec_coding_board, rec_metric_dashboard,
+    rec_metric_dashboard,
 ]
 
 

@@ -1,8 +1,8 @@
 # How leanlab works
 
-This is the deeper tour — the idea, the two lab types, the coding-lab flow, and
-the project structure. For installation and day-to-day commands, see the
-[README](../README.md) and [USAGE.md](USAGE.md).
+This is the deeper tour — the idea, the loop, and the project structure. For
+installation and day-to-day commands, see the [README](../README.md) and
+[USAGE.md](USAGE.md).
 
 ## The idea
 
@@ -18,123 +18,49 @@ leanlab is used **inside your own project** (like archik): each lab lives in a
 `.leanlab/<name>/` folder; the engine stays in the installed tool and is never
 copied into your project.
 
-## Two lab types
+## The team
 
-The same loop runs two ways. A **metric lab** (ML / optimization — evolve a
-number) and a **coding lab** (do coding tasks on a repo — pass tests). Same
-engine, different words:
+One loop, three Claude agents, each with a job:
 
-**The team (agents)**
+| Agent | Job |
+|-------|-----|
+| Worker (experimenter) | makes the attempt — writes one new experiment |
+| Director (chief scientist) | steers + maintains the notes |
+| Critic (red-team) | finds what's wrong |
 
-| Metric lab | Coding lab | Job |
-|------------|-----------|-----|
-| Worker (experimenter) | Engineer | makes the attempt |
-| Director (chief scientist) | Tech-lead | steers + maintains the notes |
-| Critic (red-team) | Reviewer | finds what's wrong |
-| *(init drafts the lab)* | Spec-writer | turns a task into locked acceptance tests |
+And `init` drafts the lab itself (task + objective + evaluator) before the loop
+ever runs.
 
 **Core concepts**
 
-| Metric lab | Coding lab |
-|------------|-----------|
-| Experiment (one file in `experiments/`) | Change / diff (in a git worktree) |
-| Frozen evaluator (`evaluation.py` → JSON metric) | Gate (locked acceptance tests + project tests) |
-| Objective metric (min rmse / max acc) | pass/fail gate + quality score (0–100) |
-| Memory (top-N best experiments, injected) | PLAYBOOK (project conventions, injected) |
-| `Director_Notes.md` | `PLAYBOOK.md` |
-| `Critic_Feedback.md` | reviewer feedback (inline, per build) |
-| `results.jsonl` (one row per experiment) | `coding-results.jsonl` + git history |
-| best-so-far (kept by ranking) | merged (kept by passing gate + review) |
-| "lock the evaluator" | "lock the acceptance tests" (+ hash) |
+| Concept | What it is |
+|---------|-----------|
+| Experiment | one file in `experiments/` |
+| Frozen evaluator | `evaluation.py` → JSON metric |
+| Objective metric | min rmse / max acc |
+| Memory | top-N best experiments, injected |
+| `Director_Notes.md` | the Director's running plan |
+| `Critic_Feedback.md` | the Critic's red-team notes |
+| `results.jsonl` | one row per experiment |
+| best-so-far | kept by ranking |
 
-**Commands**
-
-| Metric lab | Coding lab |
-|------------|-----------|
-| `init` (scaffold a lab) | `spec` (define a task) |
-| `run` (evolve experiments) | `build` (engineer a task) |
-| `serve` (dashboard) | `board` (dashboard) |
-| `lock` / `unlock` | (lock is automatic in `spec`) |
-
-Same idea both ways: **make an attempt → judge it → keep the best → learn for
-next time** — just "experiment + metric + memory" swapped for "code change +
-tests + playbook."
-
-## The coding lab flow
-
-A coding lab is an **assembly line with quality gates**. Each step hands off to
-the next, and any failed gate sends the work back to the engineer — up to
-`--max-attempts`. Nothing reaches `main` until the tests pass, the work is proven
-honest, and every reviewer approves.
-
-```
-        Developer
-           │  leanlab spec "task"
-           ▼
-   ┌──────────────┐
-   │ Spec-writer  │  drafts the spec + LOCKS the acceptance tests
-   └──────────────┘  (sha256, stored outside the worktree)
-           │  leanlab build <slug>
-           ▼
-   ┌──────────────┐ ◀──────────────────┐
-   │   Engineer   │  implements in an   │
-   └──────────────┘  isolated worktree  │
-           │                            │
-           ▼                            │
-      [  Gate  ]   locked tests pass    │  fail →
-           │                            │  fix & retry
-           ▼                            │  (≤ max-attempts)
-   [ Honesty checks ]  no tampering,    │
-                       no gamed tests   │
-           │                            │
-           ▼                            │
-   [ Reviewer panel ]  N lenses,        │
-                       ALL must approve ┘
-           │  all approve
-           ▼
-   ┌──────────────┐
-   │    Merge     │  the change ships to main
-   └──────────────┘
-           │
-           ▼
-   ┌──────────────┐
-   │  Tech-lead   │  rewrites PLAYBOOK.md → next task starts smarter
-   └──────────────┘
-```
-
-| Step | Who | What happens |
-|------|-----|--------------|
-| `leanlab spec "task"` | **Spec-writer** | Reads the repo, writes a spec + acceptance tests, then **locks** the tests (sha256 stored outside the worktree, so they can't be quietly edited). |
-| `leanlab build <slug>` | **Engineer** | Implements the change in its own git worktree. |
-| Gate | *automated* | Restores the pristine tests and runs them. Fail → back to the engineer with the failure. |
-| Honesty checks | *automated* | (a) Were the locked tests touched? (b) Do they still pass **without** the engineer's own fixtures/conftest? Either trick → rejected. |
-| Reviewer panel | **Reviewer(s)** | 1–N adversarial reviewers, each with a different lens (correctness / spec-conformance / security / robustness). **All must approve**; any blocker returns a concrete counterexample. Size it with `--reviewers N`. |
-| Merge | *automated* | The branch merges into `main` — the change ships. |
-| Playbook | **Tech-lead** | Rewrites `PLAYBOOK.md` so the next task starts with the project's conventions and pitfalls. |
-
-Watch it live with `leanlab board`: the four roles, a per-task round-by-round
-timeline, the agent chat (every session, with token cost), and the playbook.
-
-**Why it compounds:** every merged task adds its locked tests to `main` (a
-ratchet that never loosens), and the playbook accumulates — so the lab keeps
-getting better at *your* project.
+The whole thing is one idea: **make an attempt → judge it → keep the best →
+learn for next time.**
 
 ## Structure
 
 ```
 leanlab/                     # the installable tool (engine — never copied into your project)
-├── cli.py                   # commands: init · check · fix · run · serve · spec · build · board · list · lock · unlock
+├── cli.py                   # commands: init · check · fix · run · serve · list · lock · unlock
 ├── core/
 │   ├── loop.py              # run N experiments, score, log, wake Director/Critic
-│   ├── monitor.py           # metric-lab live dashboard
+│   ├── monitor.py           # the live dashboard
 │   ├── init.py              # interactive `init` — Claude drafts task + evaluator
 │   ├── doctor.py            # preflight checks + Claude-powered `fix`
-│   ├── coding/              # the coding lab: spec · engineer · gate · reviewer · tech-lead · board
 │   └── agents/              # ports & adapters — the backend-agnostic agent layer
-├── templates/agents/        # the agent personas (injected into prompts, not copied)
-└── core/coding/board_dist/  # the React board UI, compiled (built from frontend/)
+└── templates/agents/        # the agent personas (injected into prompts, not copied)
 
-<your project>/.leanlab/<name>/   # a metric lab — only YOUR files
+<your project>/.leanlab/<name>/   # a lab — only YOUR files
 ├── task.md          goal + experiment contract
 ├── lab.json         objective {metric, direction}, commands, cadences
 ├── evaluation.py    the FROZEN evaluator → prints ONE line of JSON metrics
@@ -168,7 +94,5 @@ held-out data.
 
 - Agents get full tools and are told to be proactive researchers (web, ML, `uv add`).
 - The Worker never runs the evaluator, so metric scores stay honest; `lock` freezes it.
-- In coding labs, acceptance tests are locked (sha256, out of the worktree),
-  restored before every gate, and re-run in isolation to catch fixture-gaming.
 - The evaluator and agent personas live in the package and are injected into
   prompts — nothing framework-level is copied into your project.

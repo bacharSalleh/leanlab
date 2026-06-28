@@ -2,7 +2,7 @@
   "version": "1.0",
   "useCase": "diagnose-lab",
   "slice": "fix-wiring",
-  "recordedAt": "2026-06-27T14:20:58.702201+00:00",
+  "recordedAt": "2026-06-28T17:50:31.896628+00:00",
   "steps": [
     {
       "from": "lab-doctor",

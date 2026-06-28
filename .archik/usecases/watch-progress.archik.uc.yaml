@@ -7,7 +7,7 @@ goal: >-
   The operator watches a lab evolve live — scores, sessions, and notes — without touching
   the run, so they can see how it is going and when to step in.
 preconditions:
-  - A lab exists (an experiment lab, or a coding lab with task worktrees).
+  - An experiment lab exists.
 flows:
   basic:
     steps:
@@ -23,10 +23,3 @@ slices:
     status: active
     realization:
       seqFile: .archik/metric-dashboard.archik.seq.yaml
-  - id: coding-board
-    description: For a coding lab — task cards with gate status (spec'd / merged / failed) and the PLAYBOOK.
-    flows: [basic]
-    tests: [tests/test_coding_board.py]
-    status: active
-    realization:
-      seqFile: .archik/coding-board.archik.seq.yaml
