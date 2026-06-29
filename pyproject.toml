@@ -39,7 +39,7 @@ leanlab = "leanlab.cli:main"
 # Tooling + the deps the bundled example lab (house-prices) needs to run under tests.
 # leanlab itself has no third-party runtime deps — ML libs belong to the *lab*, not the tool.
 dev = [
-    "pytest>=8.0",
+    "pytest>=9.1.1",
     "ruff>=0.6",
     "scikit-learn>=1.4",
     "numpy>=1.26",
