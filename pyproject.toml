@@ -22,7 +22,7 @@ classifiers = [
 ]
 # CLI UX only — the engine logic stays dependency-free; ML libs belong to the lab.
 dependencies = [
-    "rich>=13",
+    "rich>=15.0.0",
     "questionary>=2",
 ]
 
